@@ -31,3 +31,38 @@ def test_health_check():
                 assert r.json() == {"status": "ok"}
 
         asyncio.run(_test())
+
+
+from unittest.mock import MagicMock, patch
+
+
+@patch("backend.main.SessionHandler")
+def test_negotiate_returns_pubsub_url(mock_session_class):
+    import os, importlib, asyncio
+    from httpx import AsyncClient
+    from httpx._transports.asgi import ASGITransport
+
+    env = {
+        "AZURE_SPEECH_KEY": "test-key",
+        "AZURE_SPEECH_REGION": "westeurope",
+        "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://test.webpubsub.azure.com;AccessKey=abc;Version=1.0;",
+    }
+    with patch.dict(os.environ, env):
+        import backend.config as cfg
+        importlib.reload(cfg)
+        import backend.main as main_mod
+        importlib.reload(main_mod)
+        from backend.main import app
+
+        mock_session = MagicMock()
+        mock_session.session_id = "test-uuid"
+        mock_session.listener_token = "wss://pubsub.example.com/token"
+        app.state.sessions = {"test-uuid": mock_session}
+
+        async def _test():
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                r = await client.get("/negotiate?session=test-uuid")
+                assert r.status_code == 200
+                assert r.json()["url"] == "wss://pubsub.example.com/token"
+
+        asyncio.run(_test())
