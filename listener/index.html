@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gibberly — Live Translation</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f0f; color: #f0f0f0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh; padding: 2rem;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    #status { font-size: 0.9rem; color: #888; margin-bottom: 2rem; }
+    #listen-btn {
+      padding: 1.2rem 3rem; font-size: 1.2rem;
+      background: #2563eb; color: #fff;
+      border: none; border-radius: 2rem; cursor: pointer;
+    }
+    #listen-btn:disabled { background: #444; cursor: default; }
+    #last-phrase { margin-top: 2rem; font-size: 1rem; color: #aaa; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Live Translation</h1>
+  <p id="status">Tap to connect</p>
+  <button id="listen-btn">Listen</button>
+  <p id="last-phrase"></p>
+  <script src="app.js"></script>
+</body>
+</html>
