@@ -30,5 +30,5 @@ def test_config_raises_on_missing_speech_key():
     with patch.dict(os.environ, env, clear=True):
         import importlib
         import backend.config as config_module
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             importlib.reload(config_module)

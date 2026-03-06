@@ -22,28 +22,37 @@ def mock_deps():
 
 
 def test_session_has_unique_id(mock_deps):
+    import asyncio
     from backend.session import SessionHandler
-    s1 = SessionHandler(speech_key="k", speech_region="r", pubsub_cs="cs")
-    s2 = SessionHandler(speech_key="k", speech_region="r", pubsub_cs="cs")
+    loop = asyncio.new_event_loop()
+    s1 = SessionHandler(speech_key="k", speech_region="r", pubsub_cs="cs", loop=loop)
+    s2 = SessionHandler(speech_key="k", speech_region="r", pubsub_cs="cs", loop=loop)
     assert s1.session_id != s2.session_id
+    loop.close()
 
 
 def test_session_listener_url_contains_session_id(mock_deps):
+    import asyncio
     *_, mock_ts, mock_pub = mock_deps
     from backend.session import SessionHandler
-    handler = SessionHandler(speech_key="k", speech_region="r", pubsub_cs="cs")
+    loop = asyncio.new_event_loop()
+    handler = SessionHandler(speech_key="k", speech_region="r", pubsub_cs="cs", loop=loop)
     url = handler.listener_token
     assert url == "wss://pubsub.example.com/token123"
     mock_pub.get_listener_token.assert_called_once_with(handler.session_id)
+    loop.close()
 
 
 def test_write_audio_forwards_to_translation_session(mock_deps):
+    import asyncio
     *_, mock_ts, mock_pub = mock_deps
     from backend.session import SessionHandler
-    handler = SessionHandler(speech_key="k", speech_region="r", pubsub_cs="cs")
+    loop = asyncio.new_event_loop()
+    handler = SessionHandler(speech_key="k", speech_region="r", pubsub_cs="cs", loop=loop)
     handler.start()
     handler.write(b"\xde\xad\xbe\xef")
     mock_ts.write.assert_called_once_with(b"\xde\xad\xbe\xef")
+    loop.close()
 
 
 def test_on_translation_synthesizes_and_publishes(mock_deps):

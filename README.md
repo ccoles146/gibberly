@@ -25,6 +25,8 @@ cp .env.example .env
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
+> **Note:** Set `BACKEND_HOST` in `.env` to your machine's LAN IP (e.g. `192.168.1.100`) — not `0.0.0.0` — so the QR code points to a valid address for phones on the same network.
+
 ### 5. Run the console (from a second terminal)
 ```bash
 # Use microphone

@@ -20,7 +20,12 @@ class SessionHandler:
         self.session_id = str(uuid.uuid4())
         self._speech_key = speech_key
         self._speech_region = speech_region
-        self._loop = loop or asyncio.new_event_loop()
+        if loop is None:
+            raise TypeError(
+                "SessionHandler requires an explicit event loop. "
+                "Pass the running loop via loop=asyncio.get_running_loop() or loop=asyncio.get_event_loop()."
+            )
+        self._loop = loop
 
         self._publisher = PubSubPublisher(pubsub_cs)
         self.listener_token = self._publisher.get_listener_token(self.session_id)
@@ -36,7 +41,7 @@ class SessionHandler:
         asyncio.run_coroutine_threadsafe(self._synthesize_and_publish(text), self._loop)
 
     async def _synthesize_and_publish(self, text: str) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         audio_bytes = await loop.run_in_executor(
             None,
             lambda: synthesize(text, speech_key=self._speech_key, speech_region=self._speech_region),
