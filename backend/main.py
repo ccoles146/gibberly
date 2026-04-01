@@ -1,15 +1,20 @@
 import asyncio
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
 from backend.session import SessionHandler
 
 app = FastAPI(title="Gibberly Backend")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
 app.state.sessions: Dict[str, SessionHandler] = {}
+app.state.current_session_id: Optional[str] = None
 
 LISTENER_DIR = Path(__file__).parent.parent / "listener"
 
@@ -27,17 +32,53 @@ def negotiate(session: str):
     return {"url": handler.listener_token}
 
 
+@app.get("/listen/live")
+def live_redirect():
+    sid = app.state.current_session_id
+    if not sid:
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;text-align:center;padding:3rem'>"
+            "<h2>No live session at the moment.</h2>"
+            "<p>The service will be available when the operator starts a session.</p>"
+            "</body></html>",
+            status_code=503,
+        )
+    return RedirectResponse(f"/listen/index.html?session={sid}", status_code=302)
+
+
+@app.post("/session/{session_id}/join")
+def listener_join(session_id: str):
+    handler = app.state.sessions.get(session_id)
+    if not handler:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"count": handler.listener_join()}
+
+
+@app.post("/session/{session_id}/leave")
+def listener_leave(session_id: str):
+    handler = app.state.sessions.get(session_id)
+    if not handler:
+        return {"count": 0}
+    return {"count": handler.listener_leave()}
+
+
 @app.websocket("/ws/stream")
 async def stream(websocket: WebSocket):
     await websocket.accept()
     loop = asyncio.get_event_loop()
+
+    async def send_status(msg: dict) -> None:
+        await websocket.send_json(msg)
+
     handler = SessionHandler(
         speech_key=settings.azure_speech_key,
         speech_region=settings.azure_speech_region,
         pubsub_cs=settings.azure_webpubsub_connection_string,
         loop=loop,
+        on_status=send_status,
     )
     app.state.sessions[handler.session_id] = handler
+    app.state.current_session_id = handler.session_id
     handler.start()
 
     await websocket.send_json({
@@ -58,6 +99,8 @@ async def stream(websocket: WebSocket):
     finally:
         handler.stop()
         app.state.sessions.pop(handler.session_id, None)
+        if app.state.current_session_id == handler.session_id:
+            app.state.current_session_id = None
 
 
 if LISTENER_DIR.exists():

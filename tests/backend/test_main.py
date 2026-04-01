@@ -66,3 +66,60 @@ def test_negotiate_returns_pubsub_url(mock_session_class):
                 assert r.json()["url"] == "wss://pubsub.example.com/token"
 
         asyncio.run(_test())
+
+
+@patch("backend.main.SessionHandler")
+def test_live_redirect_no_session(mock_session_class):
+    import os, importlib, asyncio
+    from httpx import AsyncClient
+    from httpx._transports.asgi import ASGITransport
+
+    env = {
+        "AZURE_SPEECH_KEY": "test-key",
+        "AZURE_SPEECH_REGION": "westeurope",
+        "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://test.webpubsub.azure.com;AccessKey=abc;Version=1.0;",
+    }
+    with patch.dict(os.environ, env):
+        import backend.config as cfg
+        importlib.reload(cfg)
+        import backend.main as main_mod
+        importlib.reload(main_mod)
+        from backend.main import app
+
+        app.state.current_session_id = None
+
+        async def _test():
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                r = await client.get("/listen/live", follow_redirects=False)
+                assert r.status_code == 503
+
+        asyncio.run(_test())
+
+
+@patch("backend.main.SessionHandler")
+def test_live_redirect_active_session(mock_session_class):
+    import os, importlib, asyncio
+    from httpx import AsyncClient
+    from httpx._transports.asgi import ASGITransport
+
+    env = {
+        "AZURE_SPEECH_KEY": "test-key",
+        "AZURE_SPEECH_REGION": "westeurope",
+        "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://test.webpubsub.azure.com;AccessKey=abc;Version=1.0;",
+    }
+    with patch.dict(os.environ, env):
+        import backend.config as cfg
+        importlib.reload(cfg)
+        import backend.main as main_mod
+        importlib.reload(main_mod)
+        from backend.main import app
+
+        app.state.current_session_id = "abc-123"
+
+        async def _test():
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                r = await client.get("/listen/live", follow_redirects=False)
+                assert r.status_code in (302, 307)
+                assert r.headers["location"] == "/listen/index.html?session=abc-123"
+
+        asyncio.run(_test())
