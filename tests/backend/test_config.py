@@ -12,11 +12,8 @@ def test_config_loads_from_env():
         "BACKEND_PORT": "8000",
     }
     with patch.dict(os.environ, env, clear=True):
-        import importlib
-        import backend.config as config_module
-        importlib.reload(config_module)
-        from backend.config import settings
-
+        from backend.config import _load
+        settings = _load()
         assert settings.azure_speech_key == "test-key"
         assert settings.azure_speech_region == "westeurope"
         assert settings.backend_port == 8000
@@ -28,7 +25,6 @@ def test_config_raises_on_missing_speech_key():
         "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://test.webpubsub.azure.com;AccessKey=abc;Version=1.0;",
     }
     with patch.dict(os.environ, env, clear=True):
-        import importlib
-        import backend.config as config_module
-        with pytest.raises(ValueError):
-            importlib.reload(config_module)
+        from backend.config import _load
+        with pytest.raises(ValueError, match="AZURE_SPEECH_KEY"):
+            _load()
