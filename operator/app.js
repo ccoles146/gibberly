@@ -192,7 +192,6 @@
 
     ws.onerror = () => {
       setState('error', 'Connection error');
-      stopSession = null;
     };
 
     ws.onclose = () => {
@@ -262,6 +261,8 @@
     const file = fileInput.files[0];
     if (!file) { setState('idle'); return; }
 
+    let driveTimer = null;
+
     const ws = openWebSocket((activeWs) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -279,7 +280,7 @@
           const chunk = pcm.slice(offset, offset + CHUNK);
           activeWs.send(chunk.buffer);
           offset += CHUNK;
-          setTimeout(sendNext, 20);
+          driveTimer = setTimeout(sendNext, 20);
         }
 
         sendNext();
@@ -288,6 +289,7 @@
     });
 
     stopSession = () => {
+      clearTimeout(driveTimer);
       ws.close();
       setState('idle');
       stopTimer();
