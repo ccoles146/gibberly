@@ -11,8 +11,7 @@ class TranslationSession:
         speech_region: str,
         on_translation: Callable[[str], None],
     ):
-        fmt = speechsdk.audio.AudioStreamFormat.get_wave_format_pcm(16000, 16, 1)
-        self._push_stream = speechsdk.audio.PushAudioInputStream(stream_format=fmt)
+        self._push_stream = speechsdk.audio.PushAudioInputStream()
         audio_config = speechsdk.audio.AudioConfig(stream=self._push_stream)
 
         config = speechsdk.translation.SpeechTranslationConfig(
