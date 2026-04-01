@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 @pytest.fixture
 def mock_deps():
     with patch("backend.session.TranslationSession") as mock_ts_class, \
-         patch("backend.session.synthesize") as mock_synth, \
          patch("backend.session.PubSubPublisher") as mock_pub_class:
 
         mock_ts = MagicMock()
@@ -16,13 +15,10 @@ def mock_deps():
         mock_pub_class.return_value = mock_pub
         mock_pub.get_listener_token.return_value = "wss://pubsub.example.com/token123"
 
-        mock_synth.return_value = b"RIFF...wav"
-
-        yield mock_ts_class, mock_synth, mock_pub_class, mock_ts, mock_pub
+        yield mock_ts_class, mock_pub_class, mock_ts, mock_pub
 
 
 def test_session_has_unique_id(mock_deps):
-    import asyncio
     from backend.session import SessionHandler
     loop = asyncio.new_event_loop()
     s1 = SessionHandler(speech_key="k", speech_region="r", pubsub_cs="cs", loop=loop)
@@ -32,19 +28,16 @@ def test_session_has_unique_id(mock_deps):
 
 
 def test_session_listener_url_contains_session_id(mock_deps):
-    import asyncio
     *_, mock_ts, mock_pub = mock_deps
     from backend.session import SessionHandler
     loop = asyncio.new_event_loop()
     handler = SessionHandler(speech_key="k", speech_region="r", pubsub_cs="cs", loop=loop)
-    url = handler.listener_token
-    assert url == "wss://pubsub.example.com/token123"
+    assert handler.listener_token == "wss://pubsub.example.com/token123"
     mock_pub.get_listener_token.assert_called_once_with(handler.session_id)
     loop.close()
 
 
 def test_write_audio_forwards_to_translation_session(mock_deps):
-    import asyncio
     *_, mock_ts, mock_pub = mock_deps
     from backend.session import SessionHandler
     loop = asyncio.new_event_loop()
@@ -55,8 +48,8 @@ def test_write_audio_forwards_to_translation_session(mock_deps):
     loop.close()
 
 
-def test_on_translation_synthesizes_and_publishes(mock_deps):
-    mock_ts_class, mock_synth, mock_pub_class, mock_ts, mock_pub = mock_deps
+def test_on_audio_chunk_publishes_directly(mock_deps):
+    mock_ts_class, mock_pub_class, mock_ts, mock_pub = mock_deps
     loop = asyncio.new_event_loop()
 
     from backend.session import SessionHandler
@@ -65,15 +58,13 @@ def test_on_translation_synthesizes_and_publishes(mock_deps):
     )
     handler.start()
 
-    # Grab the on_translation callback passed to TranslationSession
-    on_translation = mock_ts_class.call_args[1]["on_translation"]
+    # Grab the on_audio_chunk callback passed to TranslationSession
+    on_audio_chunk = mock_ts_class.call_args[1]["on_audio_chunk"]
 
-    # Fire it (simulates SDK callback on background thread)
-    on_translation("Guten Morgen")
+    # Fire it (simulates SDK synthesizing callback on background thread)
+    on_audio_chunk(b"\xde\xad\xbe\xef")
 
-    # Run the loop to process the coroutine
     loop.run_until_complete(asyncio.sleep(0.1))
 
-    mock_synth.assert_called_once_with("Guten Morgen", speech_key="k", speech_region="r")
-    mock_pub.publish_audio.assert_called_once_with(handler.session_id, b"RIFF...wav")
+    mock_pub.publish_audio.assert_called_once_with(handler.session_id, b"\xde\xad\xbe\xef")
     loop.close()

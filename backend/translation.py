@@ -1,15 +1,17 @@
 from typing import Callable
 import azure.cognitiveservices.speech as speechsdk
 
+VOICE = "en-US-AndrewNeural"
+
 
 class TranslationSession:
-    """Wraps Azure Speech Translation for a single streaming session."""
+    """Wraps Azure Speech Translation+Synthesis for a single streaming session."""
 
     def __init__(
         self,
         speech_key: str,
         speech_region: str,
-        on_translation: Callable[[str], None],
+        on_audio_chunk: Callable[[bytes], None],
     ):
         self._push_stream = speechsdk.audio.PushAudioInputStream()
         audio_config = speechsdk.audio.AudioConfig(stream=self._push_stream)
@@ -19,18 +21,19 @@ class TranslationSession:
         )
         config.speech_recognition_language = "de-DE"
         config.add_target_language("en")
+        config.voice_name = VOICE
 
         self._recognizer = speechsdk.translation.TranslationRecognizer(
             translation_config=config, audio_config=audio_config
         )
-        self._recognizer.recognized.connect(
-            lambda evt: self._on_recognized(evt, on_translation)
+        self._recognizer.synthesizing.connect(
+            lambda evt: self._on_synthesizing(evt, on_audio_chunk)
         )
 
-    def _on_recognized(self, evt, on_translation: Callable[[str], None]) -> None:
-        translation = evt.result.translations.get("en", "")
-        if translation:
-            on_translation(translation)
+    def _on_synthesizing(self, evt, on_audio_chunk: Callable[[bytes], None]) -> None:
+        audio = evt.result.audio
+        if audio:
+            on_audio_chunk(audio)
 
     def start(self) -> None:
         self._recognizer.start_continuous_recognition()

@@ -32,19 +32,24 @@
     return buf;
   }
 
-  async function playWav(arrayBuffer) {
-    try {
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-      const src = audioCtx.createBufferSource();
-      src.buffer = audioBuffer;
-      src.connect(audioCtx.destination);
-      const now = audioCtx.currentTime;
-      const startAt = Math.max(now, nextPlayTime);
-      src.start(startAt);
-      nextPlayTime = startAt + audioBuffer.duration;
-    } catch (e) {
-      console.warn('Audio decode error:', e);
+  // Azure TranslationRecognizer synthesizing output: 16kHz 16-bit mono PCM
+  const PCM_SAMPLE_RATE = 16000;
+
+  function playPcm(arrayBuffer) {
+    const samples = new Int16Array(arrayBuffer);
+    if (samples.length === 0) return;
+    const audioBuffer = audioCtx.createBuffer(1, samples.length, PCM_SAMPLE_RATE);
+    const channel = audioBuffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) {
+      channel[i] = samples[i] / 32768;
     }
+    const src = audioCtx.createBufferSource();
+    src.buffer = audioBuffer;
+    src.connect(audioCtx.destination);
+    const now = audioCtx.currentTime;
+    const startAt = Math.max(now, nextPlayTime);
+    src.start(startAt);
+    nextPlayTime = startAt + audioBuffer.duration;
   }
 
   async function connect() {
@@ -74,7 +79,7 @@
 
       if (msg.type === 'message' && msg.dataType === 'binary') {
         const buf = base64ToArrayBuffer(msg.data);
-        await playWav(buf);
+        playPcm(buf);
       }
 
       if (msg.type === 'message' && msg.dataType === 'json' && msg.data?.type === 'close') {
