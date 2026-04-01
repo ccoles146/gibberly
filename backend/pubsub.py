@@ -3,8 +3,10 @@ from azure.messaging.webpubsubservice import WebPubSubServiceClient
 
 class PubSubPublisher:
     def __init__(self, connection_string: str, hub: str = "sermon"):
+        # Normalize connection string: Azure Portal returns "AccessKey" but SDK expects "accesskey"
+        normalized_cs = connection_string.replace("AccessKey=", "accesskey=")
         self._client = WebPubSubServiceClient.from_connection_string(
-            connection_string, hub=hub
+            normalized_cs, hub=hub
         )
 
     def publish_audio(self, session_id: str, audio_bytes: bytes) -> None:
