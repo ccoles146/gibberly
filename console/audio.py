@@ -1,4 +1,5 @@
 from typing import Iterator
+import time
 import numpy as np
 import soundfile as sf
 
@@ -26,8 +27,12 @@ class FileAudioSource:
             target_len = int(len(data) * SAMPLE_RATE / sr)
             data = resample(data, target_len).astype(DTYPE)
 
+        # Sleep duration between chunks (in seconds)
+        sleep_duration = self._chunk_samples / SAMPLE_RATE
+
         for i in range(0, len(data) - self._chunk_samples + 1, self._chunk_samples):
             yield data[i : i + self._chunk_samples].tobytes()
+            time.sleep(sleep_duration)
 
 
 class MicAudioSource:
