@@ -169,10 +169,129 @@
     }
   }
 
-  // Stubs — implemented in Task 6
-  function startDeviceSession() { setState('error', 'Device session not yet implemented'); }
-  function startFileSession()   { setState('error', 'File session not yet implemented'); }
+  // ── Shared WebSocket session setup ─────────────────────────────────────────
+  function openWebSocket(onOpen) {
+    const ws = new WebSocket(backendWs + '/ws/stream');
+    ws.binaryType = 'arraybuffer';
 
-  // Expose for Task 6
-  window._gibberly = { setState, startTimer, stopTimer, handleStatusMessage, backendWs };
+    ws.onmessage = (evt) => {
+      if (typeof evt.data === 'string') {
+        let msg;
+        try { msg = JSON.parse(evt.data); } catch { return; }
+        if (msg.type === 'session_created') {
+          setState('live');
+          startTimer();
+          lastPhraseEl.textContent = '';
+          listenerCount.textContent = '0';
+          onOpen(ws);
+        } else {
+          handleStatusMessage(msg);
+        }
+      }
+    };
+
+    ws.onerror = () => {
+      setState('error', 'Connection error');
+      stopSession = null;
+    };
+
+    ws.onclose = () => {
+      if (state === 'live' || state === 'connecting') setState('idle');
+      stopTimer();
+      stopSession = null;
+    };
+
+    return ws;
+  }
+
+  // ── Device audio pipeline ──────────────────────────────────────────────────
+  async function startDeviceSession() {
+    const deviceId    = deviceSelect.value;
+    const channelMode = channelSelect.value || 'left';
+    let audioCtx, workletNode, stream;
+
+    const ws = openWebSocket(async (activeWs) => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: { exact: deviceId },
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            sampleRate: { ideal: 48000 },
+          }
+        });
+
+        audioCtx = new AudioContext();
+        await audioCtx.audioWorklet.addModule('worklet.js');
+
+        workletNode = new AudioWorkletNode(audioCtx, 'gibberly-resampler', {
+          processorOptions: { channelMode },
+        });
+
+        workletNode.port.onmessage = (e) => {
+          if (activeWs.readyState === WebSocket.OPEN) {
+            activeWs.send(e.data);
+          }
+        };
+
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(workletNode);
+        // Do NOT connect workletNode to destination — no local playback echo
+
+      } catch (err) {
+        setState('error', err.message);
+        stopSession = null;
+        activeWs.close();
+      }
+    });
+
+    stopSession = () => {
+      if (workletNode) workletNode.disconnect();
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      if (audioCtx) audioCtx.close();
+      ws.close();
+      setState('idle');
+      stopTimer();
+      stopSession = null;
+    };
+  }
+
+  // ── File audio pipeline ────────────────────────────────────────────────────
+  function startFileSession() {
+    const file = fileInput.files[0];
+    if (!file) { setState('idle'); return; }
+
+    const ws = openWebSocket((activeWs) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        // Standard PCM WAV: skip 44-byte header, treat rest as 16kHz 16-bit mono Int16
+        const buf   = e.target.result;
+        const pcm   = new Int16Array(buf, 44);   // skip WAV header
+        let offset  = 0;
+        const CHUNK = 320;   // 20 ms at 16kHz
+
+        function sendNext() {
+          if (offset >= pcm.length || activeWs.readyState !== WebSocket.OPEN) {
+            if (activeWs.readyState === WebSocket.OPEN) activeWs.close();
+            return;
+          }
+          const chunk = pcm.slice(offset, offset + CHUNK);
+          activeWs.send(chunk.buffer);
+          offset += CHUNK;
+          setTimeout(sendNext, 20);
+        }
+
+        sendNext();
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    stopSession = () => {
+      ws.close();
+      setState('idle');
+      stopTimer();
+      stopSession = null;
+    };
+  }
 })();
