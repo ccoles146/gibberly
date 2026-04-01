@@ -14,6 +14,7 @@ import sys
 import time
 
 import websockets
+from websockets.exceptions import ConnectionClosedError
 
 from console.audio import FileAudioSource, MicAudioSource, list_devices
 from console.ui import qr_lines, format_status
@@ -77,7 +78,7 @@ async def run(args):
 
         try:
             await stream_chunks()
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, ConnectionClosedError):
             pass
         finally:
             print("\nStopping session…")
