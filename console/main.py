@@ -64,6 +64,8 @@ async def run(args):
         else:
             source = MicAudioSource(device=args.device)
 
+        sleep_s = getattr(source, "sleep_s", 0)
+
         async def stream_chunks():
             for chunk in source.chunks():
                 await ws.send(chunk)
@@ -75,6 +77,8 @@ async def run(args):
                     last_phrase=last_phrase,
                 )
                 print(f"\r{status}", end="", flush=True)
+                if sleep_s:
+                    await asyncio.sleep(sleep_s)
 
         try:
             await stream_chunks()

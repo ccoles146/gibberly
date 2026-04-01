@@ -1,5 +1,5 @@
+from math import gcd
 from typing import Iterator
-import time
 import numpy as np
 import soundfile as sf
 
@@ -10,29 +10,46 @@ DTYPE = "int16"
 
 
 class FileAudioSource:
-    """Streams a WAV file as 16kHz mono PCM chunks."""
+    """Streams a WAV file as 16kHz mono PCM chunks, reading block-by-block."""
 
     def __init__(self, path: str, chunk_ms: int = 100):
         self._path = path
         self._chunk_samples = int(SAMPLE_RATE * chunk_ms / 1000)
+        self.sleep_s = chunk_ms / 1000  # caller should await asyncio.sleep(source.sleep_s)
 
     def chunks(self) -> Iterator[bytes]:
-        data, sr = sf.read(self._path, dtype=DTYPE, always_2d=False)
-        # Convert stereo → mono
-        if data.ndim == 2:
-            data = data.mean(axis=1).astype(DTYPE)
-        # Resample to 16kHz if needed
-        if sr != SAMPLE_RATE:
-            from scipy.signal import resample
-            target_len = int(len(data) * SAMPLE_RATE / sr)
-            data = resample(data, target_len).astype(DTYPE)
+        from scipy.signal import resample_poly
 
-        # Sleep duration between chunks (in seconds)
-        sleep_duration = self._chunk_samples / SAMPLE_RATE
+        with sf.SoundFile(self._path) as f:
+            sr = f.samplerate
+            if sr != SAMPLE_RATE:
+                g = gcd(sr, SAMPLE_RATE)
+                up, down = SAMPLE_RATE // g, sr // g
+                # Read enough input samples to produce roughly one output chunk
+                in_block = max(1, int(self._chunk_samples * down / up))
+            else:
+                up = down = 1
+                in_block = self._chunk_samples
 
-        for i in range(0, len(data) - self._chunk_samples + 1, self._chunk_samples):
-            yield data[i : i + self._chunk_samples].tobytes()
-            time.sleep(sleep_duration)
+            buf = np.zeros(0, dtype=DTYPE)
+
+            for block in f.blocks(blocksize=in_block, dtype=DTYPE, always_2d=False):
+                # Stereo → mono
+                if block.ndim == 2:
+                    block = block.mean(axis=1).astype(DTYPE)
+                # Resample block to 16kHz
+                if sr != SAMPLE_RATE:
+                    block = resample_poly(block, up, down).astype(DTYPE)
+                buf = np.concatenate([buf, block])
+                while len(buf) >= self._chunk_samples:
+                    yield buf[: self._chunk_samples].tobytes()
+                    buf = buf[self._chunk_samples :]
+
+            # Flush remaining samples (zero-padded to full chunk)
+            if len(buf) > 0:
+                padded = np.zeros(self._chunk_samples, dtype=DTYPE)
+                padded[: len(buf)] = buf
+                yield padded.tobytes()
 
 
 class MicAudioSource:
