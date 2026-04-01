@@ -1,0 +1,167 @@
+(function () {
+  // ── DOM refs ────────────────────────────────────────────────────────────────
+  const statusDot      = document.getElementById('status-dot');
+  const statusText     = document.getElementById('status-text');
+  const statListeners  = document.getElementById('stat-listeners');
+  const statElapsed    = document.getElementById('stat-elapsed');
+  const listenerCount  = document.getElementById('listener-count');
+  const elapsedEl      = document.getElementById('elapsed');
+  const qrCanvas       = document.getElementById('qr-canvas');
+  const liveUrlEl      = document.getElementById('live-url');
+  const lastPhraseEl   = document.getElementById('last-phrase');
+  const deviceSelect   = document.getElementById('device-select');
+  const channelSelect  = document.getElementById('channel-select');
+  const fileInput      = document.getElementById('file-input');
+  const actionBtn      = document.getElementById('action-btn');
+
+  // ── Config ──────────────────────────────────────────────────────────────────
+  const backendWs  = window.GIBBERLY_BACKEND;                     // e.g. ws://host:8000
+  const backendHttp = backendWs.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
+  const liveUrl    = backendHttp + '/listen/live';
+
+  // ── QR code (rendered once on load, never changes) ──────────────────────────
+  (function renderQr() {
+    const qr = qrcode(0, 'M');
+    qr.addData(liveUrl);
+    qr.make();
+    qrCanvas.innerHTML = qr.createTableTag(4, 0);
+    liveUrlEl.textContent = liveUrl;
+    liveUrlEl.href = liveUrl;
+  })();
+
+  // ── State machine ──────────────────────────────────────────────────────────
+  // States: idle | connecting | live | error
+  let state = 'idle';
+
+  function setState(s, msg) {
+    state = s;
+    statusDot.className = s === 'live' ? 'live' : s === 'connecting' ? 'connecting' : s === 'error' ? 'error' : '';
+    statusText.textContent = msg || { idle: 'OFFLINE', connecting: 'CONNECTING…', live: 'LIVE', error: 'Error' }[s];
+    actionBtn.disabled = s === 'connecting';
+    actionBtn.textContent = s === 'live' ? '■ Stop' : s === 'error' ? '▶ Retry' : '▶ Start';
+    actionBtn.className = s === 'live' ? 'stop' : '';
+    statListeners.style.display = s === 'live' ? '' : 'none';
+    statElapsed.style.display   = s === 'live' ? '' : 'none';
+  }
+
+  setState('idle');
+
+  // ── Device enumeration ─────────────────────────────────────────────────────
+  const FILE_OPTION_VALUE = '__file__';
+  const STORAGE_DEVICE    = 'gibberly_device';
+  const STORAGE_CHANNEL   = 'gibberly_channel';
+
+  async function populateDevices() {
+    // Request permission so device labels are populated
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+    } catch (_) { /* permission denied — labels will be generic */ }
+
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const inputs  = devices.filter(d => d.kind === 'audioinput');
+
+    deviceSelect.innerHTML = '';
+    inputs.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || `Microphone (${d.deviceId.slice(0, 8)})`;
+      deviceSelect.appendChild(opt);
+    });
+
+    const fileOpt = document.createElement('option');
+    fileOpt.value = FILE_OPTION_VALUE;
+    fileOpt.textContent = 'Browse file…';
+    deviceSelect.appendChild(fileOpt);
+
+    // Restore saved device
+    const saved = localStorage.getItem(STORAGE_DEVICE);
+    if (saved && [...deviceSelect.options].some(o => o.value === saved)) {
+      deviceSelect.value = saved;
+    }
+
+    updateChannelVisibility();
+  }
+
+  function updateChannelVisibility() {
+    const isFile = deviceSelect.value === FILE_OPTION_VALUE;
+    channelSelect.style.display = isFile ? 'none' : '';
+    if (isFile) {
+      // Trigger file picker when "Browse file…" is selected
+      fileInput.click();
+    } else {
+      localStorage.setItem(STORAGE_DEVICE, deviceSelect.value);
+    }
+    const savedCh = localStorage.getItem(STORAGE_CHANNEL);
+    if (savedCh) channelSelect.value = savedCh;
+  }
+
+  deviceSelect.addEventListener('change', updateChannelVisibility);
+  channelSelect.addEventListener('change', () => {
+    localStorage.setItem(STORAGE_CHANNEL, channelSelect.value);
+  });
+  fileInput.addEventListener('change', () => {
+    if (!fileInput.files.length) {
+      // User cancelled — revert to first real device
+      deviceSelect.selectedIndex = 0;
+      updateChannelVisibility();
+    }
+  });
+
+  populateDevices();
+
+  // ── Elapsed timer ──────────────────────────────────────────────────────────
+  let elapsedTimer = null;
+  let startTime    = 0;
+
+  function startTimer() {
+    startTime = Date.now();
+    elapsedTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - startTime) / 1000);
+      const m = Math.floor(s / 60);
+      elapsedEl.textContent = `${String(m).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+    }, 1000);
+  }
+
+  function stopTimer() {
+    clearInterval(elapsedTimer);
+    elapsedEl.textContent = '00:00';
+  }
+
+  // ── Status message handler (filled in Task 6) ─────────────────────────────
+  function handleStatusMessage(msg) {
+    if (msg.type === 'phrase') {
+      lastPhraseEl.textContent = `"${msg.text}"`;
+    } else if (msg.type === 'listeners') {
+      listenerCount.textContent = msg.count;
+    }
+  }
+
+  // ── Session management (filled in Tasks 6–7) ──────────────────────────────
+  let stopSession = null;  // set when a session is active; call to stop it
+
+  actionBtn.addEventListener('click', () => {
+    if (state === 'live' && stopSession) {
+      stopSession();
+    } else if (state !== 'connecting') {
+      startSession();
+    }
+  });
+
+  function startSession() {
+    setState('connecting');
+    const isFile = deviceSelect.value === FILE_OPTION_VALUE;
+    if (isFile) {
+      startFileSession();
+    } else {
+      startDeviceSession();
+    }
+  }
+
+  // Stubs — implemented in Task 6
+  function startDeviceSession() { setState('error', 'Device session not yet implemented'); }
+  function startFileSession()   { setState('error', 'File session not yet implemented'); }
+
+  // Expose for Task 6
+  window._gibberly = { setState, startTimer, stopTimer, handleStatusMessage, backendWs };
+})();
