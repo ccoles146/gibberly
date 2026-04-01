@@ -36,7 +36,7 @@
   function setState(s, msg) {
     state = s;
     statusDot.className = s === 'live' ? 'live' : s === 'connecting' ? 'connecting' : s === 'error' ? 'error' : '';
-    statusText.textContent = msg || { idle: 'OFFLINE', connecting: 'CONNECTING…', live: 'LIVE', error: 'Error' }[s];
+    statusText.textContent = msg || { idle: 'OFFLINE', connecting: 'CONNECTING…', live: 'LIVE', error: 'ERROR' }[s];
     actionBtn.disabled = s === 'connecting';
     actionBtn.textContent = s === 'live' ? '■ Stop' : s === 'error' ? '▶ Retry' : '▶ Start';
     actionBtn.className = s === 'live' ? 'stop' : '';
@@ -58,7 +58,18 @@
       stream.getTracks().forEach(t => t.stop());
     } catch (_) { /* permission denied — labels will be generic */ }
 
-    const devices = await navigator.mediaDevices.enumerateDevices();
+    let devices;
+    try {
+      devices = await navigator.mediaDevices.enumerateDevices();
+    } catch (err) {
+      deviceSelect.innerHTML = '<option value="">No audio devices found</option>';
+      const fileOpt = document.createElement('option');
+      fileOpt.value = '__file__';
+      fileOpt.textContent = 'Browse file…';
+      deviceSelect.appendChild(fileOpt);
+      updateChannelVisibility(false);
+      return;
+    }
     const inputs  = devices.filter(d => d.kind === 'audioinput');
 
     deviceSelect.innerHTML = '';
@@ -80,15 +91,14 @@
       deviceSelect.value = saved;
     }
 
-    updateChannelVisibility();
+    updateChannelVisibility(false);
   }
 
-  function updateChannelVisibility() {
+  function updateChannelVisibility(fromUserAction = true) {
     const isFile = deviceSelect.value === FILE_OPTION_VALUE;
     channelSelect.style.display = isFile ? 'none' : '';
     if (isFile) {
-      // Trigger file picker when "Browse file…" is selected
-      fileInput.click();
+      if (fromUserAction) fileInput.click();
     } else {
       localStorage.setItem(STORAGE_DEVICE, deviceSelect.value);
     }
@@ -124,7 +134,8 @@
   }
 
   function stopTimer() {
-    clearInterval(elapsedTimer);
+    if (elapsedTimer) clearInterval(elapsedTimer);
+    elapsedTimer = null;
     elapsedEl.textContent = '00:00';
   }
 
