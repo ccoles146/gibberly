@@ -123,3 +123,121 @@ def test_live_redirect_active_session(mock_session_class):
                 assert r.headers["location"] == "/listen/index.html?session=abc-123"
 
         asyncio.run(_test())
+
+
+@patch("backend.main.SessionHandler")
+def test_listener_join_increments_count(mock_session_class):
+    import os, importlib, asyncio
+    from httpx import AsyncClient
+    from httpx._transports.asgi import ASGITransport
+
+    env = {
+        "AZURE_SPEECH_KEY": "test-key",
+        "AZURE_SPEECH_REGION": "westeurope",
+        "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://test.webpubsub.azure.com;AccessKey=abc;Version=1.0;",
+    }
+    with patch.dict(os.environ, env):
+        import backend.config as cfg
+        importlib.reload(cfg)
+        import backend.main as main_mod
+        importlib.reload(main_mod)
+        from backend.main import app
+
+        mock_handler = MagicMock()
+        mock_handler.listener_join.return_value = 1
+        app.state.sessions = {"session-abc": mock_handler}
+
+        async def _test():
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                r = await client.post("/session/session-abc/join")
+                assert r.status_code == 200
+                assert r.json() == {"count": 1}
+
+        asyncio.run(_test())
+
+
+@patch("backend.main.SessionHandler")
+def test_listener_join_unknown_session(mock_session_class):
+    import os, importlib, asyncio
+    from httpx import AsyncClient
+    from httpx._transports.asgi import ASGITransport
+
+    env = {
+        "AZURE_SPEECH_KEY": "test-key",
+        "AZURE_SPEECH_REGION": "westeurope",
+        "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://test.webpubsub.azure.com;AccessKey=abc;Version=1.0;",
+    }
+    with patch.dict(os.environ, env):
+        import backend.config as cfg
+        importlib.reload(cfg)
+        import backend.main as main_mod
+        importlib.reload(main_mod)
+        from backend.main import app
+
+        app.state.sessions = {}
+
+        async def _test():
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                r = await client.post("/session/nonexistent/join")
+                assert r.status_code == 404
+
+        asyncio.run(_test())
+
+
+@patch("backend.main.SessionHandler")
+def test_listener_leave_decrements_count(mock_session_class):
+    import os, importlib, asyncio
+    from httpx import AsyncClient
+    from httpx._transports.asgi import ASGITransport
+
+    env = {
+        "AZURE_SPEECH_KEY": "test-key",
+        "AZURE_SPEECH_REGION": "westeurope",
+        "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://test.webpubsub.azure.com;AccessKey=abc;Version=1.0;",
+    }
+    with patch.dict(os.environ, env):
+        import backend.config as cfg
+        importlib.reload(cfg)
+        import backend.main as main_mod
+        importlib.reload(main_mod)
+        from backend.main import app
+
+        mock_handler = MagicMock()
+        mock_handler.listener_leave.return_value = 0
+        app.state.sessions = {"session-abc": mock_handler}
+
+        async def _test():
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                r = await client.post("/session/session-abc/leave")
+                assert r.status_code == 200
+
+        asyncio.run(_test())
+
+
+@patch("backend.main.SessionHandler")
+def test_listener_leave_unknown_session(mock_session_class):
+    import os, importlib, asyncio
+    from httpx import AsyncClient
+    from httpx._transports.asgi import ASGITransport
+
+    env = {
+        "AZURE_SPEECH_KEY": "test-key",
+        "AZURE_SPEECH_REGION": "westeurope",
+        "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://test.webpubsub.azure.com;AccessKey=abc;Version=1.0;",
+    }
+    with patch.dict(os.environ, env):
+        import backend.config as cfg
+        importlib.reload(cfg)
+        import backend.main as main_mod
+        importlib.reload(main_mod)
+        from backend.main import app
+
+        app.state.sessions = {}
+
+        async def _test():
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                r = await client.post("/session/nonexistent/leave")
+                assert r.status_code == 200
+                assert r.json() == {"count": 0}
+
+        asyncio.run(_test())
