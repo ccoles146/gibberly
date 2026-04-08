@@ -53,7 +53,7 @@ async def run(args):
         print("\nStreaming audio. Press Ctrl+C to stop.\n")
 
         start_time = time.time()
-        last_phrase = ""
+        state = {"last_phrase": "", "listener_count": 0}
 
         # Audio source
         if args.mode == "file":
@@ -72,16 +72,30 @@ async def run(args):
                 elapsed = int(time.time() - start_time)
                 status = format_status(
                     connected=True,
-                    listener_count=0,
+                    listener_count=state["listener_count"],
                     elapsed_s=elapsed,
-                    last_phrase=last_phrase,
+                    last_phrase=state["last_phrase"],
                 )
                 print(f"\r{status}", end="", flush=True)
                 if sleep_s:
                     await asyncio.sleep(sleep_s)
 
+        async def receive_status():
+            while True:
+                try:
+                    raw = await ws.recv()
+                    msg = json.loads(raw)
+                    if msg.get("type") == "phrase":
+                        state["last_phrase"] = msg.get("text", "")
+                    elif msg.get("type") == "listeners":
+                        state["listener_count"] = msg.get("count", 0)
+                except (json.JSONDecodeError, KeyError):
+                    pass
+                except Exception:
+                    break
+
         try:
-            await stream_chunks()
+            await asyncio.gather(stream_chunks(), receive_status())
         except (KeyboardInterrupt, ConnectionClosedError):
             pass
         finally:

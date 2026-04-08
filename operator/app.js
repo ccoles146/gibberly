@@ -145,6 +145,8 @@
       lastPhraseEl.textContent = `"${msg.text}"`;
     } else if (msg.type === 'listeners') {
       listenerCount.textContent = msg.count;
+    } else if (msg.type === 'debug_audio_start') {
+      console.log('[gibberly] synthesis started — first audio chunk, bytes:', msg.size);
     }
   }
 

@@ -71,6 +71,7 @@
     ws.onopen = () => {
       setStatus('Connected — waiting for audio…');
       ws.send(JSON.stringify({ type: 'joinGroup', group: `session-${session}` }));
+      fetch(`/session/${session}/join`, { method: 'POST' }).catch(() => {});
     };
 
     ws.onmessage = async (event) => {
@@ -78,19 +79,27 @@
       try { msg = JSON.parse(event.data); } catch { return; }
 
       if (msg.type === 'message' && msg.dataType === 'binary') {
+        console.log('[gibberly] binary audio arrived, b64 length:', msg.data?.length);
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
         const buf = base64ToArrayBuffer(msg.data);
+        console.log('[gibberly] playPcm, bytes:', buf.byteLength, 'ctx state:', audioCtx.state);
         playPcm(buf);
       }
 
-      if (msg.type === 'message' && msg.dataType === 'json' && msg.data?.type === 'close') {
-        setStatus('Session ended.');
-        ws.close();
+      if (msg.type === 'message' && msg.dataType === 'json') {
+        if (msg.data?.type === 'close') {
+          setStatus('Session ended.');
+          ws.close();
+        } else if (msg.data?.type === 'phrase') {
+          phraseEl.textContent = msg.data.text;
+        }
       }
     };
 
     ws.onerror = () => setStatus('Connection error. Retrying…');
 
     ws.onclose = () => {
+      fetch(`/session/${session}/leave`, { method: 'POST' }).catch(() => {});
       setStatus('Disconnected. Reload to reconnect.');
     };
   }

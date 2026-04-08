@@ -71,19 +71,20 @@ az webapp up \
   --name gibberly-backend \
   --resource-group gibberly-rg \
   --plan gibberly-plan \
-  --runtime "PYTHON:3.13" \
+  --runtime "PYTHON:3.11" \
   --location germanywestcentral
 ```
 
 > **Why B1 and not Free?** The Free tier (F1) has a 60 CPU-min/day cap and goes to sleep after inactivity — the first WebSocket on Sunday would time out while it wakes. B1 stays responsive. Stop it between Sundays to save cost: `az webapp stop/start --name gibberly-backend --resource-group gibberly-rg`
 
-Set the startup command so App Service knows to use uvicorn:
+Set the startup command and enable WebSocket support (disabled by default):
 
 ```bash
 az webapp config set \
   --name gibberly-backend \
   --resource-group gibberly-rg \
-  --startup-file "uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+  --startup-file "uvicorn backend.main:app --host 0.0.0.0 --port 8000" \
+  --web-sockets-enabled true
 ```
 
 Set the environment variables (replace the placeholder values):
@@ -182,7 +183,8 @@ az webapp log tail --name gibberly-backend --resource-group gibberly-rg
 ```
 Most likely cause: missing or wrong environment variable.
 
-**WebSocket connection refused from operator console:**
+**WebSocket connection refused / operator console stays "connecting":**
+- Confirm WebSockets are enabled: `az webapp config set --name gibberly-backend --resource-group gibberly-rg --web-sockets-enabled true`
 - Confirm `.env` has `GIBBERLY_BACKEND=wss://…` (not `ws://`) and that you restarted `serve.py` after editing `.env`.
 - App Service only accepts WebSocket on port 443 (wss).
 
@@ -195,3 +197,6 @@ Most likely cause: missing or wrong environment variable.
 az webapp list-runtimes --os-type linux | grep PYTHON
 ```
 Use the latest available Python 3.x version in the `--runtime` flag.
+
+**Container crashes with `libpython3.11.so.1.0: cannot open shared object file`:**
+Azure's Oryx build image uses Python 3.11 to compile the `antenv` virtualenv, even when you specify `PYTHON:3.13` as the runtime. The resulting `.so` files link against `libpython3.11.so.1.0` which is absent in the 3.13 runtime container. **Use `PYTHON:3.11`** — it matches the build image and is fully supported.
