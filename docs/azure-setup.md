@@ -58,18 +58,24 @@ Run these commands from the project root (`~/gibberly`):
 ```bash
 cd ~/gibberly
 
-# Deploy — creates App Service Plan + Web App, zips and uploads the project
-# First run takes ~3 minutes. Subsequent runs are faster.
+# Step 1 — create the App Service Plan (B1: ~$13/month, stays responsive, can be stopped between Sundays)
+az appservice plan create \
+  --name gibberly-plan \
+  --resource-group gibberly-rg \
+  --sku B1 \
+  --is-linux \
+  --location germanywestcentral
+
+# Step 2 — deploy the app (zips and uploads the project, ~3 minutes first run)
 az webapp up \
   --name gibberly-backend \
   --resource-group gibberly-rg \
-  --runtime "PYTHON:3.11" \
-  --sku B1 \
-  --os-type linux \
-  --location westeurope
+  --plan gibberly-plan \
+  --runtime "PYTHON:3.13" \
+  --location germanywestcentral
 ```
 
-> **Note:** The app runs on Python 3.11 on App Service (3.13 is not yet available). The code is fully compatible with 3.11.
+> **Why B1 and not Free?** The Free tier (F1) has a 60 CPU-min/day cap and goes to sleep after inactivity — the first WebSocket on Sunday would time out while it wakes. B1 stays responsive. Stop it between Sundays to save cost: `az webapp stop/start --name gibberly-backend --resource-group gibberly-rg`
 
 Set the startup command so App Service knows to use uvicorn:
 
@@ -110,21 +116,26 @@ Your backend URLs will be:
 
 ## 5. Configure the Operator Console
 
-Edit `operator/config.js` to point at the Azure backend:
+The operator console is a static HTML page that runs locally on the Mac. It reads its backend URL from `.env` via `operator/serve.py`.
 
-```js
-window.GIBBERLY_BACKEND = "wss://gibberly-backend.azurewebsites.net";
+Add `GIBBERLY_BACKEND` to your `.env` file (copy from `.env.example` if you haven't already):
+
+```
+GIBBERLY_BACKEND=wss://gibberly-backend.azurewebsites.net
+OPERATOR_PORT=9000
 ```
 
-The operator console is a static HTML page — no separate deployment needed. Open it directly in Chrome or Safari on the operator's Mac:
+Then start the console:
 
 ```bash
-cd ~/gibberly/operator
-python3 -m http.server 9000
+cd ~/gibberly
+python3 operator/serve.py
 # Open http://localhost:9000 in browser
 ```
 
-> **getUserMedia note:** The device audio pipeline requires a secure context (`https://` or `localhost`). Opening `http://localhost:9000` satisfies this. The file test mode works without any server.
+`serve.py` writes the correct backend URL into `config.js` automatically on each start — no manual file editing needed.
+
+> **getUserMedia note:** The device audio pipeline (Dante / DeckLink) requires a secure context (`https://` or `localhost`). `http://localhost:9000` satisfies this. File test mode works without any server.
 
 The QR code on the page encodes `https://gibberly-backend.azurewebsites.net/listen/live` — this is the stable URL listeners use every week. Print it or stick it on the mixing desk.
 
@@ -172,7 +183,7 @@ az webapp log tail --name gibberly-backend --resource-group gibberly-rg
 Most likely cause: missing or wrong environment variable.
 
 **WebSocket connection refused from operator console:**
-- Confirm `config.js` uses `wss://` (not `ws://`) for the Azure URL.
+- Confirm `.env` has `GIBBERLY_BACKEND=wss://…` (not `ws://`) and that you restarted `serve.py` after editing `.env`.
 - App Service only accepts WebSocket on port 443 (wss).
 
 **`/listen/live` returns 503 (No live session):**
