@@ -133,6 +133,11 @@ az webapp config appsettings set \
     AZURE_SPEECH_KEY="<KEY 1 from Speech resource>" \
     AZURE_SPEECH_REGION="westeurope" \
     AZURE_WEBPUBSUB_CONNECTION_STRING="<connection string from Web PubSub>" \
+    AZURE_OPENAI_ENDPOINT="<endpoint from Azure OpenAI resource>" \
+    AZURE_OPENAI_API_KEY="<KEY 1 from Azure OpenAI resource>" \
+    AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini" \
+    AZURE_TRANSLATOR_KEY="<KEY 1 from Translator resource>" \
+    AZURE_TRANSLATOR_REGION="westeurope" \
     BACKEND_HOST="0.0.0.0" \
     BACKEND_PORT="8000"
 ```
