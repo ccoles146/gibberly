@@ -45,7 +45,7 @@ Web PubSub → Listener browser (unchanged)
 
 **Remove:** Timer-based word-count chunking (`_last_word_count`, `_chunk_interval`, recurring `threading.Timer`, `stt_chunk_interval_s` config field).
 
-**Keep:** `recognized` events as the primary dispatch trigger. These fire at natural clause/sentence boundaries, controlled by `Speech_SegmentationSilenceTimeoutMs=500`.
+**Keep:** `recognized` events as the primary dispatch trigger. These fire at natural clause/sentence boundaries, controlled by `Speech_SegmentationSilenceTimeoutMs`. Increased from 500 to 1000ms default to ride through brief mid-sentence pauses (the speaker is quick). Made configurable via `STT_SILENCE_TIMEOUT_MS` env var.
 
 **Add:** A 4-second time cap safety valve. If no `recognized` event fires within 4 seconds of the first `recognizing` event in a sequence, force-dispatch whatever interim text has accumulated. This handles speakers who don't pause. The cap timer resets after each dispatch (whether by `recognized` or by cap).
 
@@ -56,7 +56,9 @@ Web PubSub → Listener browser (unchanged)
 - `_on_cap_timeout()` — dispatch `_interim_text`, clear state
 - Callback: `on_text(raw_de: str)` — unchanged signature
 
-**Config:** `stt_time_cap_s: float` (default `4.0`, env var `STT_TIME_CAP_S`).
+**Config:**
+- `stt_time_cap_s: float` (default `4.0`, env var `STT_TIME_CAP_S`)
+- `stt_silence_timeout_ms: int` (default `1000`, env var `STT_SILENCE_TIMEOUT_MS`)
 
 ---
 
@@ -163,13 +165,14 @@ on_text(raw_de)
 
 **Config additions:**
 - `stt_time_cap_s: float` (default `4.0`, env `STT_TIME_CAP_S`)
+- `stt_silence_timeout_ms: int` (default `1000`, env `STT_SILENCE_TIMEOUT_MS`)
 - `llm_context_window: int` (default `5`, env `LLM_CONTEXT_WINDOW`)
 
 **Dependency changes (`requirements.txt`):**
 - Remove: `httpx`
 - Keep: `openai>=1.30`
 
-**`.env.example`:** Remove translator vars, add `STT_TIME_CAP_S` and `LLM_CONTEXT_WINDOW` as commented defaults.
+**`.env.example`:** Remove translator vars, add `STT_TIME_CAP_S`, `STT_SILENCE_TIMEOUT_MS`, and `LLM_CONTEXT_WINDOW` as commented defaults.
 
 ---
 
@@ -236,10 +239,10 @@ Minor change to existing phrase display rendering in the operator app.
 
 | Stage | Time |
 |-------|------|
-| STT silence detection | ~500ms |
+| STT silence detection | ~1000ms |
 | LLM clean + translate | ~400ms |
 | TTS first audio byte | ~200ms |
-| **Total to first audio** | **~1.1s per utterance** |
+| **Total to first audio** | **~1.6s per utterance** |
 
 Well within the 5-second budget. The 4s time cap is the worst case for continuous speech without pauses.
 
