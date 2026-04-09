@@ -13,11 +13,11 @@ class Settings:
     azure_openai_endpoint: str
     azure_openai_api_key: str
     azure_openai_deployment: str
-    azure_translator_key: str
-    azure_translator_region: str
     backend_host: str
     backend_port: int
-    stt_chunk_interval_s: float
+    stt_silence_timeout_ms: int
+    stt_time_cap_s: float
+    llm_context_window: int
 
 
 def _load() -> Settings:
@@ -27,8 +27,6 @@ def _load() -> Settings:
     openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
     openai_api_key = os.environ.get("AZURE_OPENAI_API_KEY")
     openai_deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT")
-    translator_key = os.environ.get("AZURE_TRANSLATOR_KEY")
-    translator_region = os.environ.get("AZURE_TRANSLATOR_REGION")
 
     if not key:
         raise ValueError("AZURE_SPEECH_KEY is required")
@@ -42,10 +40,6 @@ def _load() -> Settings:
         raise ValueError("AZURE_OPENAI_API_KEY is required")
     if not openai_deployment:
         raise ValueError("AZURE_OPENAI_DEPLOYMENT is required")
-    if not translator_key:
-        raise ValueError("AZURE_TRANSLATOR_KEY is required")
-    if not translator_region:
-        raise ValueError("AZURE_TRANSLATOR_REGION is required")
 
     return Settings(
         azure_speech_key=key,
@@ -54,11 +48,11 @@ def _load() -> Settings:
         azure_openai_endpoint=openai_endpoint,
         azure_openai_api_key=openai_api_key,
         azure_openai_deployment=openai_deployment,
-        azure_translator_key=translator_key,
-        azure_translator_region=translator_region,
         backend_host=os.environ.get("BACKEND_HOST", "0.0.0.0"),
         backend_port=int(os.environ.get("BACKEND_PORT", "8000")),
-        stt_chunk_interval_s=float(os.environ.get("STT_CHUNK_INTERVAL_S", "1.5")),
+        stt_silence_timeout_ms=int(os.environ.get("STT_SILENCE_TIMEOUT_MS", "1000")),
+        stt_time_cap_s=float(os.environ.get("STT_TIME_CAP_S", "4.0")),
+        llm_context_window=int(os.environ.get("LLM_CONTEXT_WINDOW", "5")),
     )
 
 

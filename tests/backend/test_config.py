@@ -11,8 +11,6 @@ def test_config_loads_from_env():
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
         "BACKEND_HOST": "0.0.0.0",
         "BACKEND_PORT": "8000",
     }
@@ -31,8 +29,6 @@ def test_config_raises_on_missing_speech_key():
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
     }
     with patch.dict(os.environ, env, clear=True):
         from backend.config import _load
@@ -40,7 +36,7 @@ def test_config_raises_on_missing_speech_key():
             _load()
 
 
-def test_config_loads_new_azure_fields():
+def test_config_defaults():
     env = {
         "AZURE_SPEECH_KEY": "sk",
         "AZURE_SPEECH_REGION": "westeurope",
@@ -48,21 +44,16 @@ def test_config_loads_new_azure_fields():
         "AZURE_OPENAI_ENDPOINT": "https://my-openai.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
     }
     with patch.dict(os.environ, env, clear=True):
         from backend.config import _load
         s = _load()
-        assert s.azure_openai_endpoint == "https://my-openai.openai.azure.com/"
-        assert s.azure_openai_api_key == "oai-key"
-        assert s.azure_openai_deployment == "gpt-4o-mini"
-        assert s.azure_translator_key == "tr-key"
-        assert s.azure_translator_region == "westeurope"
-        assert s.stt_chunk_interval_s == 1.5  # default
+        assert s.stt_silence_timeout_ms == 1000
+        assert s.stt_time_cap_s == 4.0
+        assert s.llm_context_window == 5
 
 
-def test_config_chunk_interval_from_env():
+def test_config_overrides_from_env():
     env = {
         "AZURE_SPEECH_KEY": "sk",
         "AZURE_SPEECH_REGION": "westeurope",
@@ -70,14 +61,16 @@ def test_config_chunk_interval_from_env():
         "AZURE_OPENAI_ENDPOINT": "https://my-openai.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
-        "STT_CHUNK_INTERVAL_S": "2.0",
+        "STT_SILENCE_TIMEOUT_MS": "1500",
+        "STT_TIME_CAP_S": "5.0",
+        "LLM_CONTEXT_WINDOW": "8",
     }
     with patch.dict(os.environ, env, clear=True):
         from backend.config import _load
         s = _load()
-        assert s.stt_chunk_interval_s == 2.0
+        assert s.stt_silence_timeout_ms == 1500
+        assert s.stt_time_cap_s == 5.0
+        assert s.llm_context_window == 8
 
 
 def test_config_raises_on_missing_openai_endpoint():
@@ -87,8 +80,6 @@ def test_config_raises_on_missing_openai_endpoint():
         "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://x.webpubsub.azure.com;AccessKey=a;Version=1.0;",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
     }
     with patch.dict(os.environ, env, clear=True):
         from backend.config import _load

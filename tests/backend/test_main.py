@@ -9,8 +9,6 @@ env = {
     "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
     "AZURE_OPENAI_API_KEY": "oai-key",
     "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-    "AZURE_TRANSLATOR_KEY": "tr-key",
-    "AZURE_TRANSLATOR_REGION": "westeurope",
 }
 
 
@@ -54,8 +52,6 @@ def test_negotiate_returns_pubsub_url(mock_session_class):
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
     }
     with patch.dict(os.environ, env):
         import backend.config as cfg
@@ -91,8 +87,6 @@ def test_live_redirect_no_session(mock_session_class):
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
     }
     with patch.dict(os.environ, env):
         import backend.config as cfg
@@ -124,8 +118,6 @@ def test_live_redirect_active_session(mock_session_class):
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
     }
     with patch.dict(os.environ, env):
         import backend.config as cfg
@@ -158,8 +150,6 @@ def test_listener_join_increments_count(mock_session_class):
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
     }
     with patch.dict(os.environ, env):
         import backend.config as cfg
@@ -194,8 +184,6 @@ def test_listener_join_unknown_session(mock_session_class):
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
     }
     with patch.dict(os.environ, env):
         import backend.config as cfg
@@ -227,8 +215,6 @@ def test_listener_leave_decrements_count(mock_session_class):
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
     }
     with patch.dict(os.environ, env):
         import backend.config as cfg
@@ -262,8 +248,6 @@ def test_listener_leave_unknown_session(mock_session_class):
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
         "AZURE_OPENAI_API_KEY": "oai-key",
         "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
-        "AZURE_TRANSLATOR_KEY": "tr-key",
-        "AZURE_TRANSLATOR_REGION": "westeurope",
     }
     with patch.dict(os.environ, env):
         import backend.config as cfg
