@@ -2,14 +2,13 @@ from typing import Callable
 import azure.cognitiveservices.speech as speechsdk
 
 _VOICE = "en-US-AndrewNeural"
-_CHUNK_SIZE = 4096
 
 
 class TTSSynthesizer:
     """Synthesizes English text to audio using Azure Speech SDK.
 
     synthesize() is synchronous — run it in a thread executor.
-    Calls on_audio_chunk(bytes) with each chunk as synthesis streams.
+    Streams audio chunks via the synthesizing event as they're generated.
     """
 
     def __init__(self, speech_key: str, speech_region: str):
@@ -23,7 +22,14 @@ class TTSSynthesizer:
         )
 
     def synthesize(self, text: str, on_audio_chunk: Callable[[bytes], None]) -> None:
-        result = self._synthesizer.speak_text_async(text).get()
-        audio = result.audio_data  # bytes — no buffer-passing, works on all SDK versions
-        for i in range(0, len(audio), _CHUNK_SIZE):
-            on_audio_chunk(audio[i:i + _CHUNK_SIZE])
+        def on_synthesizing(evt):
+            if evt.result.audio_data:
+                on_audio_chunk(evt.result.audio_data)
+
+        self._synthesizer.synthesizing.connect(on_synthesizing)
+        try:
+            result = self._synthesizer.speak_text_async(text).get()
+            if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
+                raise RuntimeError(f"TTS failed: {result.reason}")
+        finally:
+            self._synthesizer.synthesizing.disconnect_all()
