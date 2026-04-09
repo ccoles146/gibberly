@@ -26,9 +26,9 @@ class TTSSynthesizer:
         result_future = self._synthesizer.start_speaking_text_async(text)
         result = result_future.get()
         audio_stream = speechsdk.AudioDataStream(result)
-        buffer = bytearray(_CHUNK_SIZE)
+        buffer = bytes(_CHUNK_SIZE)
         while True:
             filled = audio_stream.read_data(buffer)
             if filled == 0:
                 break
-            on_audio_chunk(bytes(buffer[:filled]))
+            on_audio_chunk(buffer[:filled])

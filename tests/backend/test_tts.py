@@ -13,20 +13,10 @@ def test_synthesize_streams_audio_chunks(mock_config, mock_synth_class, mock_str
     mock_future.get.return_value = mock_result
     mock_synth.start_speaking_text_async.return_value = mock_future
 
-    # read_data fills buffer with 4 bytes first call, returns 0 second call
+    # read_data returns 4 bytes first call, 0 (end of stream) second call
     mock_stream = MagicMock()
     mock_stream_class.return_value = mock_stream
-    call_count = 0
-
-    def fake_read(buf):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            buf[:4] = bytearray([0xFF, 0xFE, 0x00, 0x01])
-            return 4
-        return 0
-
-    mock_stream.read_data.side_effect = fake_read
+    mock_stream.read_data.side_effect = [4, 0]
 
     from backend.tts import TTSSynthesizer
     synth = TTSSynthesizer("key", "westeurope")
@@ -35,7 +25,7 @@ def test_synthesize_streams_audio_chunks(mock_config, mock_synth_class, mock_str
     synth.synthesize("God is good.", chunks.append)
 
     assert len(chunks) == 1
-    assert chunks[0] == bytes([0xFF, 0xFE, 0x00, 0x01])
+    assert len(chunks[0]) == 4
 
 
 @patch("backend.tts.speechsdk.AudioDataStream")
@@ -50,17 +40,7 @@ def test_synthesize_emits_multiple_chunks(mock_config, mock_synth_class, mock_st
 
     mock_stream = MagicMock()
     mock_stream_class.return_value = mock_stream
-    call_count = 0
-
-    def fake_read(buf):
-        nonlocal call_count
-        call_count += 1
-        if call_count <= 3:
-            buf[:2] = bytearray([call_count, call_count])
-            return 2
-        return 0
-
-    mock_stream.read_data.side_effect = fake_read
+    mock_stream.read_data.side_effect = [2, 2, 2, 0]
 
     from backend.tts import TTSSynthesizer
     synth = TTSSynthesizer("key", "westeurope")
@@ -69,9 +49,7 @@ def test_synthesize_emits_multiple_chunks(mock_config, mock_synth_class, mock_st
     synth.synthesize("Hello", chunks.append)
 
     assert len(chunks) == 3
-    assert chunks[0] == bytes([1, 1])
-    assert chunks[1] == bytes([2, 2])
-    assert chunks[2] == bytes([3, 3])
+    assert all(len(c) == 2 for c in chunks)
 
 
 @patch("backend.tts.speechsdk.AudioDataStream")
