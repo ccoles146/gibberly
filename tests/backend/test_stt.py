@@ -1,5 +1,6 @@
 import threading
-from unittest.mock import MagicMock, patch, call
+import time
+from unittest.mock import MagicMock, patch
 
 
 @patch("backend.stt.speechsdk.SpeechRecognizer")
@@ -41,38 +42,7 @@ def test_stt_write_pushes_bytes(
 @patch("backend.stt.speechsdk.audio.AudioConfig")
 @patch("backend.stt.speechsdk.audio.PushAudioInputStream")
 @patch("backend.stt.speechsdk.SpeechConfig")
-def test_stt_dispatch_sends_new_words_only(
-    mock_config_class, mock_stream_class, mock_audio_config, mock_recognizer_class
-):
-    mock_recognizer_class.return_value = MagicMock()
-    dispatched = []
-
-    from backend.stt import STTSession
-    session = STTSession(speech_key="k", speech_region="r", on_text=dispatched.append)
-
-    # Simulate recognizing event with 3 words
-    evt = MagicMock()
-    evt.result.text = "Das ist gut"
-    session._on_recognizing(evt)
-
-    # First dispatch sends all 3 words
-    session._dispatch()
-    assert dispatched == ["Das ist gut"]
-
-    # More words arrive in next interim result
-    evt2 = MagicMock()
-    evt2.result.text = "Das ist gut und schön"
-    session._on_recognizing(evt2)
-
-    session._dispatch()
-    assert dispatched == ["Das ist gut", "und schön"]
-
-
-@patch("backend.stt.speechsdk.SpeechRecognizer")
-@patch("backend.stt.speechsdk.audio.AudioConfig")
-@patch("backend.stt.speechsdk.audio.PushAudioInputStream")
-@patch("backend.stt.speechsdk.SpeechConfig")
-def test_stt_recognized_flushes_remaining_words(
+def test_stt_recognized_dispatches_full_text(
     mock_config_class, mock_stream_class, mock_audio_config, mock_recognizer_class
 ):
     import azure.cognitiveservices.speech as speechsdk
@@ -82,21 +52,12 @@ def test_stt_recognized_flushes_remaining_words(
     from backend.stt import STTSession
     session = STTSession(speech_key="k", speech_region="r", on_text=dispatched.append)
 
-    # 3 words already dispatched (cursor at 3)
     evt = MagicMock()
-    evt.result.text = "Das ist gut"
-    session._on_recognizing(evt)
-    session._dispatch()  # sends "Das ist gut", cursor=3
+    evt.result.reason = speechsdk.ResultReason.RecognizedSpeech
+    evt.result.text = "Das ist gut und schön"
+    session._on_recognized(evt)
 
-    # recognized fires with 5 words total — only last 2 are new
-    final_evt = MagicMock()
-    final_evt.result.reason = speechsdk.ResultReason.RecognizedSpeech
-    final_evt.result.text = "Das ist gut und schön"
-    session._on_recognized(final_evt)
-
-    assert dispatched == ["Das ist gut", "und schön"]
-    # cursor reset to 0
-    assert session._last_word_count == 0
+    assert dispatched == ["Das ist gut und schön"]
 
 
 @patch("backend.stt.speechsdk.SpeechRecognizer")
@@ -113,10 +74,10 @@ def test_stt_recognized_non_speech_skipped(
     from backend.stt import STTSession
     session = STTSession(speech_key="k", speech_region="r", on_text=dispatched.append)
 
-    final_evt = MagicMock()
-    final_evt.result.reason = speechsdk.ResultReason.NoMatch
-    final_evt.result.text = ""
-    session._on_recognized(final_evt)
+    evt = MagicMock()
+    evt.result.reason = speechsdk.ResultReason.NoMatch
+    evt.result.text = ""
+    session._on_recognized(evt)
 
     assert dispatched == []
 
@@ -125,15 +86,129 @@ def test_stt_recognized_non_speech_skipped(
 @patch("backend.stt.speechsdk.audio.AudioConfig")
 @patch("backend.stt.speechsdk.audio.PushAudioInputStream")
 @patch("backend.stt.speechsdk.SpeechConfig")
-def test_stt_dispatch_skips_when_no_new_words(
+def test_stt_recognized_empty_text_skipped(
     mock_config_class, mock_stream_class, mock_audio_config, mock_recognizer_class
 ):
+    import azure.cognitiveservices.speech as speechsdk
     mock_recognizer_class.return_value = MagicMock()
     dispatched = []
 
     from backend.stt import STTSession
     session = STTSession(speech_key="k", speech_region="r", on_text=dispatched.append)
 
-    # dispatch fires but no interim text yet
-    session._dispatch()
+    evt = MagicMock()
+    evt.result.reason = speechsdk.ResultReason.RecognizedSpeech
+    evt.result.text = ""
+    session._on_recognized(evt)
+
     assert dispatched == []
+
+
+@patch("backend.stt.speechsdk.SpeechRecognizer")
+@patch("backend.stt.speechsdk.audio.AudioConfig")
+@patch("backend.stt.speechsdk.audio.PushAudioInputStream")
+@patch("backend.stt.speechsdk.SpeechConfig")
+def test_stt_time_cap_dispatches_interim_text(
+    mock_config_class, mock_stream_class, mock_audio_config, mock_recognizer_class
+):
+    mock_recognizer_class.return_value = MagicMock()
+    dispatched = []
+
+    from backend.stt import STTSession
+    session = STTSession(
+        speech_key="k", speech_region="r",
+        on_text=dispatched.append,
+        time_cap_s=0.1,
+    )
+
+    evt = MagicMock()
+    evt.result.text = "Das ist ein langer Satz"
+    session._on_recognizing(evt)
+
+    time.sleep(0.3)
+
+    assert dispatched == ["Das ist ein langer Satz"]
+
+
+@patch("backend.stt.speechsdk.SpeechRecognizer")
+@patch("backend.stt.speechsdk.audio.AudioConfig")
+@patch("backend.stt.speechsdk.audio.PushAudioInputStream")
+@patch("backend.stt.speechsdk.SpeechConfig")
+def test_stt_recognized_cancels_time_cap(
+    mock_config_class, mock_stream_class, mock_audio_config, mock_recognizer_class
+):
+    import azure.cognitiveservices.speech as speechsdk
+    mock_recognizer_class.return_value = MagicMock()
+    dispatched = []
+
+    from backend.stt import STTSession
+    session = STTSession(
+        speech_key="k", speech_region="r",
+        on_text=dispatched.append,
+        time_cap_s=0.5,
+    )
+
+    evt = MagicMock()
+    evt.result.text = "Das ist gut"
+    session._on_recognizing(evt)
+
+    final_evt = MagicMock()
+    final_evt.result.reason = speechsdk.ResultReason.RecognizedSpeech
+    final_evt.result.text = "Das ist gut und schön"
+    session._on_recognized(final_evt)
+
+    time.sleep(0.7)
+
+    assert dispatched == ["Das ist gut und schön"]
+
+
+@patch("backend.stt.speechsdk.SpeechRecognizer")
+@patch("backend.stt.speechsdk.audio.AudioConfig")
+@patch("backend.stt.speechsdk.audio.PushAudioInputStream")
+@patch("backend.stt.speechsdk.SpeechConfig")
+def test_stt_time_cap_clears_interim_after_dispatch(
+    mock_config_class, mock_stream_class, mock_audio_config, mock_recognizer_class
+):
+    mock_recognizer_class.return_value = MagicMock()
+    dispatched = []
+
+    from backend.stt import STTSession
+    session = STTSession(
+        speech_key="k", speech_region="r",
+        on_text=dispatched.append,
+        time_cap_s=0.1,
+    )
+
+    evt = MagicMock()
+    evt.result.text = "Erster Satz"
+    session._on_recognizing(evt)
+    time.sleep(0.3)
+
+    assert dispatched == ["Erster Satz"]
+
+    time.sleep(0.3)
+    assert dispatched == ["Erster Satz"]
+
+
+@patch("backend.stt.speechsdk.SpeechRecognizer")
+@patch("backend.stt.speechsdk.audio.AudioConfig")
+@patch("backend.stt.speechsdk.audio.PushAudioInputStream")
+@patch("backend.stt.speechsdk.SpeechConfig")
+def test_stt_silence_timeout_configured(
+    mock_config_class, mock_stream_class, mock_audio_config, mock_recognizer_class
+):
+    mock_config_instance = MagicMock()
+    mock_config_class.return_value = mock_config_instance
+    mock_recognizer_class.return_value = MagicMock()
+
+    from backend.stt import STTSession
+    STTSession(
+        speech_key="k", speech_region="r",
+        on_text=lambda t: None,
+        silence_timeout_ms=1500,
+    )
+
+    import azure.cognitiveservices.speech as speechsdk
+    mock_config_instance.set_property.assert_any_call(
+        speechsdk.PropertyId.Speech_SegmentationSilenceTimeoutMs, "1500"
+    )
