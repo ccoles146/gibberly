@@ -150,6 +150,10 @@
       console.warn(`[gibberly] LLM fallback — chunk: ${msg.chunk}`);
     } else if (msg.type === 'translator_error') {
       console.error(`[gibberly] Translator failed — chunk: ${msg.chunk}`);
+    } else if (msg.type === 'tts_error') {
+      console.error(`[gibberly] TTS failed — ${msg.error}`);
+    } else if (msg.type === 'pubsub_error') {
+      console.error(`[gibberly] PubSub publish failed — ${msg.error}`);
     } else if (msg.type === 'listeners') {
       listenerCount.textContent = msg.count;
     } else if (msg.type === 'debug_audio_start') {

@@ -82,22 +82,37 @@ class SessionHandler:
             None,
             lambda: self._publisher.publish_phrase(self.session_id, en_text),
         )
-        await loop.run_in_executor(
-            None,
-            lambda: self._tts.synthesize(
-                en_text,
-                lambda chunk: asyncio.run_coroutine_threadsafe(
+        try:
+            first_chunk = True
+
+            def on_chunk(chunk: bytes) -> None:
+                nonlocal first_chunk
+                if first_chunk:
+                    first_chunk = False
+                    asyncio.run_coroutine_threadsafe(
+                        self._send_status({"type": "debug_audio_start", "size": len(chunk)}),
+                        loop,
+                    )
+                asyncio.run_coroutine_threadsafe(
                     self._publish_chunk(chunk), loop
-                ),
-            ),
-        )
+                )
+
+            await loop.run_in_executor(
+                None,
+                lambda: self._tts.synthesize(en_text, on_chunk),
+            )
+        except Exception as exc:
+            await self._send_status({"type": "tts_error", "error": str(exc)})
 
     async def _publish_chunk(self, audio_bytes: bytes) -> None:
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            lambda: self._publisher.publish_audio(self.session_id, audio_bytes),
-        )
+        try:
+            await loop.run_in_executor(
+                None,
+                lambda: self._publisher.publish_audio(self.session_id, audio_bytes),
+            )
+        except Exception as exc:
+            await self._send_status({"type": "pubsub_error", "error": str(exc)})
 
     async def _send_status(self, msg: dict) -> None:
         if self._on_status:
