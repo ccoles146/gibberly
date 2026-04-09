@@ -77,9 +77,9 @@ async def stream(websocket: WebSocket):
         openai_endpoint=settings.azure_openai_endpoint,
         openai_api_key=settings.azure_openai_api_key,
         openai_deployment=settings.azure_openai_deployment,
-        translator_key=settings.azure_translator_key,
-        translator_region=settings.azure_translator_region,
-        chunk_interval=settings.stt_chunk_interval_s,
+        silence_timeout_ms=settings.stt_silence_timeout_ms,
+        time_cap_s=settings.stt_time_cap_s,
+        context_window=settings.llm_context_window,
         loop=loop,
         on_status=send_status,
     )
