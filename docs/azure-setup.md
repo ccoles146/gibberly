@@ -43,7 +43,43 @@ You need three things: **Speech** resource (STT + translation + TTS), **Web PubS
 
 ---
 
-## 3. Configure a Hub
+## 3. Create an Azure OpenAI Resource
+
+1. **Create a resource** → search **Azure OpenAI** → **Create**.
+2. Fill in:
+   - **Resource group**: `gibberly-rg`
+   - **Region**: `West Europe` (match your Speech resource region for lowest latency)
+   - **Name**: `gibberly-openai`
+   - **Pricing tier**: `S0`
+3. Click **Review + create** → **Create**.
+4. Once deployed, go to the resource → **Keys and Endpoint**.
+5. Copy **KEY 1** → `AZURE_OPENAI_API_KEY` and **Endpoint** → `AZURE_OPENAI_ENDPOINT`.
+
+**Deploy the model:**
+
+6. Go to **Azure OpenAI Studio** (link in the resource overview) → **Deployments** → **+ Create**.
+7. Select model: `gpt-4o-mini` → Deployment name: `gpt-4o-mini` → **Deploy**.
+8. Set `AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini` in `.env`.
+
+---
+
+## 4. Create an Azure Translator Resource
+
+1. **Create a resource** → search **Translator** → **Create**.
+2. Fill in:
+   - **Resource group**: `gibberly-rg`
+   - **Region**: `West Europe`
+   - **Name**: `gibberly-translator`
+   - **Pricing tier**: `Free F0` (2M chars/month) or `S1` for production
+3. Click **Review + create** → **Create**.
+4. Once deployed, go to the resource → **Keys and Endpoint**.
+5. Copy **KEY 1** → `AZURE_TRANSLATOR_KEY`. Region is `westeurope` → `AZURE_TRANSLATOR_REGION=westeurope`.
+
+> **Note:** The Translator endpoint is always `https://api.cognitive.microsofttranslator.com` regardless of resource region — no need to copy it.
+
+---
+
+## 5. Configure a Hub
 
 1. In the Web PubSub resource, go to **Settings → Hub Settings**.
 2. Click **+ Add** → Hub name: `sermon` → **Anonymous connect**: Allow → **Save**.
@@ -51,7 +87,7 @@ You need three things: **Speech** resource (STT + translation + TTS), **Web PubS
 
 ---
 
-## 4. Deploy the Backend to Azure App Service
+## 6. Deploy the Backend to Azure App Service
 
 Run these commands from the project root (`~/gibberly`):
 
@@ -115,7 +151,7 @@ Your backend URLs will be:
 
 ---
 
-## 5. Configure the Operator Console
+## 7. Configure the Operator Console
 
 The operator console is a static HTML page that runs locally on the Mac. It reads its backend URL from `.env` via `operator/serve.py`.
 
@@ -142,7 +178,7 @@ The QR code on the page encodes `https://gibberly-backend.azurewebsites.net/list
 
 ---
 
-## 6. Redeploy After Code Changes
+## 8. Redeploy After Code Changes
 
 After any code change, redeploy with the same command (run from `~/gibberly`):
 
@@ -156,7 +192,7 @@ App settings (env vars) are preserved across redeployments.
 
 ---
 
-## 7. Costs
+## 9. Costs
 
 | Resource | Tier | Est. monthly cost |
 |---|---|---|
