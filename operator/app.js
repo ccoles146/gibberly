@@ -143,13 +143,17 @@
   function handleStatusMessage(msg) {
     console.log('[gibberly] msg:', msg.type, msg);
     if (msg.type === 'phrase') {
-      lastPhraseEl.textContent = `"${msg.text}"`;
+      const en = msg.en_text || msg.text || '';
+      const parts = [];
+      if (msg.raw_de) parts.push(`raw: ${msg.raw_de}`);
+      if (msg.clean_de) parts.push(`clean: ${msg.clean_de}`);
+      parts.push(`en: ${en}`);
+      lastPhraseEl.innerHTML = parts.map(p => `<div>${p}</div>`).join('');
       if (msg.raw_de) console.log(`[gibberly] raw:   ${msg.raw_de}`);
       if (msg.clean_de) console.log(`[gibberly] clean: ${msg.clean_de}`);
+      if (en) console.log(`[gibberly] en:    ${en}`);
     } else if (msg.type === 'llm_fallback') {
       console.warn(`[gibberly] LLM fallback — chunk: ${msg.chunk}`);
-    } else if (msg.type === 'translator_error') {
-      console.error(`[gibberly] Translator failed — chunk: ${msg.chunk}`);
     } else if (msg.type === 'tts_error') {
       console.error(`[gibberly] TTS failed — ${msg.error}`);
     } else if (msg.type === 'pubsub_error') {
