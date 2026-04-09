@@ -1,6 +1,6 @@
 # Azure Setup Guide
 
-You need three things: **Speech** resource (STT + translation + TTS), **Web PubSub** resource (relay audio to listeners), and an **App Service** to run the backend. All can be created in the Azure Portal or via the Azure CLI.
+You need three things: **Speech** resource (STT + TTS), **Web PubSub** resource (relay audio to listeners), and **Azure OpenAI** (cleaning + translation). Plus an **App Service** to run the backend. All can be created in the Azure Portal or via the Azure CLI.
 
 ## Prerequisites
 
@@ -63,23 +63,7 @@ You need three things: **Speech** resource (STT + translation + TTS), **Web PubS
 
 ---
 
-## 4. Create an Azure Translator Resource
-
-1. **Create a resource** → search **Translator** → **Create**.
-2. Fill in:
-   - **Resource group**: `gibberly-rg`
-   - **Region**: `West Europe`
-   - **Name**: `gibberly-translator`
-   - **Pricing tier**: `Free F0` (2M chars/month) or `S1` for production
-3. Click **Review + create** → **Create**.
-4. Once deployed, go to the resource → **Keys and Endpoint**.
-5. Copy **KEY 1** → `AZURE_TRANSLATOR_KEY`. Region is `westeurope` → `AZURE_TRANSLATOR_REGION=westeurope`.
-
-> **Note:** The Translator endpoint is always `https://api.cognitive.microsofttranslator.com` regardless of resource region — no need to copy it.
-
----
-
-## 5. Configure a Hub
+## 4. Configure a Hub
 
 1. In the Web PubSub resource, go to **Settings → Hub Settings**.
 2. Click **+ Add** → Hub name: `sermon` → **Anonymous connect**: Allow → **Save**.
@@ -87,7 +71,15 @@ You need three things: **Speech** resource (STT + translation + TTS), **Web PubS
 
 ---
 
-## 6. Deploy the Backend to Azure App Service
+## 5. Deploy the Backend to Azure App Service
+
+First, check available Python runtimes in your region:
+
+```bash
+az webapp list-runtimes --os-type linux | grep PYTHON
+```
+
+Use the **latest available Python 3.x** version from the output (not necessarily 3.11 — regional availability varies).
 
 Run these commands from the project root (`~/gibberly`):
 
@@ -103,6 +95,7 @@ az appservice plan create \
   --location germanywestcentral
 
 # Step 2 — deploy the app (zips and uploads the project, ~3 minutes first run)
+# Replace PYTHON:3.11 with the latest available version from step 1
 az webapp up \
   --name gibberly-backend \
   --resource-group gibberly-rg \
@@ -136,8 +129,6 @@ az webapp config appsettings set \
     AZURE_OPENAI_ENDPOINT="<endpoint from Azure OpenAI resource>" \
     AZURE_OPENAI_API_KEY="<KEY 1 from Azure OpenAI resource>" \
     AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini" \
-    AZURE_TRANSLATOR_KEY="<KEY 1 from Translator resource>" \
-    AZURE_TRANSLATOR_REGION="westeurope" \
     BACKEND_HOST="0.0.0.0" \
     BACKEND_PORT="8000"
 ```
@@ -156,7 +147,7 @@ Your backend URLs will be:
 
 ---
 
-## 7. Configure the Operator Console
+## 6. Configure the Operator Console
 
 The operator console is a static HTML page that runs locally on the Mac. It reads its backend URL from `.env` via `operator/serve.py`.
 
@@ -183,7 +174,7 @@ The QR code on the page encodes `https://gibberly-backend.azurewebsites.net/list
 
 ---
 
-## 8. Redeploy After Code Changes
+## 7. Redeploy After Code Changes
 
 After any code change, redeploy with the same command (run from `~/gibberly`):
 
@@ -197,12 +188,13 @@ App settings (env vars) are preserved across redeployments.
 
 ---
 
-## 9. Costs
+## 8. Costs
 
 | Resource | Tier | Est. monthly cost |
 |---|---|---|
 | App Service Plan B1 | Basic | ~$13 |
 | Speech S0 | Pay-per-use | ~$1 per hour of audio |
+| Azure OpenAI (GPT-4o mini) | Pay-per-use | ~$0.50 per sermon hour |
 | Web PubSub | Free | $0 |
 
 For a weekly 1-hour sermon: ~$17/month total, well within the nonprofit Azure grant.
@@ -239,5 +231,8 @@ az webapp list-runtimes --os-type linux | grep PYTHON
 ```
 Use the latest available Python 3.x version in the `--runtime` flag.
 
-**Container crashes with `libpython3.11.so.1.0: cannot open shared object file`:**
-Azure's Oryx build image uses Python 3.11 to compile the `antenv` virtualenv, even when you specify `PYTHON:3.13` as the runtime. The resulting `.so` files link against `libpython3.11.so.1.0` which is absent in the 3.13 runtime container. **Use `PYTHON:3.11`** — it matches the build image and is fully supported.
+**Container crashes with `libpythonX.Y.so.1.0: cannot open shared object file`:**
+Azure's Oryx build image compiles the `antenv` virtualenv using its own Python version, which may differ from your chosen runtime. The `.so` files link against the build Python version, which is then absent in the runtime container. **The runtime must match the Oryx build Python version.** Read the version from the error message (e.g. `libpython3.10.so.1.0` → use `PYTHON:3.10`) and redeploy:
+```bash
+az webapp up --name gibberly-backend --resource-group gibberly-rg --runtime "PYTHON:3.10"
+```
