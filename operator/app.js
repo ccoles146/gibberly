@@ -143,6 +143,8 @@
   function handleStatusMessage(msg) {
     if (msg.type === 'phrase') {
       lastPhraseEl.textContent = `"${msg.text}"`;
+      if (msg.raw_de) console.log(`[gibberly] raw:   ${msg.raw_de}`);
+      if (msg.clean_de) console.log(`[gibberly] clean: ${msg.clean_de}`);
     } else if (msg.type === 'listeners') {
       listenerCount.textContent = msg.count;
     } else if (msg.type === 'debug_audio_start') {

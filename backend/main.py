@@ -74,6 +74,12 @@ async def stream(websocket: WebSocket):
         speech_key=settings.azure_speech_key,
         speech_region=settings.azure_speech_region,
         pubsub_cs=settings.azure_webpubsub_connection_string,
+        openai_endpoint=settings.azure_openai_endpoint,
+        openai_api_key=settings.azure_openai_api_key,
+        openai_deployment=settings.azure_openai_deployment,
+        translator_key=settings.azure_translator_key,
+        translator_region=settings.azure_translator_region,
+        chunk_interval=settings.stt_chunk_interval_s,
         loop=loop,
         on_status=send_status,
     )
