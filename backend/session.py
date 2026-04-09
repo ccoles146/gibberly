@@ -3,14 +3,13 @@ import uuid
 from typing import Awaitable, Callable, Optional
 
 from backend.stt import STTSession
-from backend.llm_cleaner import LLMCleaner
-from backend.text_translator import TextTranslator
+from backend.llm_translator import LLMTranslator
 from backend.tts import TTSSynthesizer
 from backend.pubsub import PubSubPublisher
 
 
 class SessionHandler:
-    """Orchestrates STT → LLM clean → translate → TTS → Web PubSub for one session."""
+    """Orchestrates STT → LLM clean+translate → TTS → Web PubSub for one session."""
 
     def __init__(
         self,
@@ -20,9 +19,9 @@ class SessionHandler:
         openai_endpoint: str,
         openai_api_key: str,
         openai_deployment: str,
-        translator_key: str,
-        translator_region: str,
-        chunk_interval: float = 1.5,
+        silence_timeout_ms: int = 1000,
+        time_cap_s: float = 4.0,
+        context_window: int = 5,
         loop: Optional[asyncio.AbstractEventLoop] = None,
         on_status: Optional[Callable[[dict], Awaitable[None]]] = None,
     ):
@@ -40,42 +39,43 @@ class SessionHandler:
         self._publisher = PubSubPublisher(pubsub_cs)
         self.listener_token = self._publisher.get_listener_token(self.session_id)
 
-        self._cleaner = LLMCleaner(openai_endpoint, openai_api_key, openai_deployment)
-        self._translator = TextTranslator(translator_key, translator_region)
+        self._llm_translator = LLMTranslator(
+            openai_endpoint, openai_api_key, openai_deployment,
+            context_window=context_window,
+        )
         self._tts = TTSSynthesizer(speech_key, speech_region)
         self._stt = STTSession(
             speech_key=speech_key,
             speech_region=speech_region,
             on_text=self._on_text,
-            chunk_interval=chunk_interval,
+            silence_timeout_ms=silence_timeout_ms,
+            time_cap_s=time_cap_s,
         )
 
     def _on_text(self, raw_de: str) -> None:
-        """Called from STTSession timer/recognized thread — bridge to asyncio."""
+        """Called from STTSession recognized/cap thread — bridge to asyncio."""
         asyncio.run_coroutine_threadsafe(
             self._process_chunk(raw_de), self._loop
         )
 
     async def _process_chunk(self, raw_de: str) -> None:
         try:
-            clean_de = await self._cleaner.clean(raw_de)
+            result = await self._llm_translator.translate(raw_de)
+            clean_de = result["clean_de"]
+            en_text = result["en_text"]
         except Exception:
             clean_de = raw_de
+            en_text = raw_de
             await self._send_status({"type": "llm_fallback", "chunk": raw_de})
 
-        if not clean_de:
-            return
-
-        en_text = await self._translator.translate(clean_de)
         if not en_text:
-            await self._send_status({"type": "translator_error", "chunk": clean_de})
             return
 
         await self._send_status({
             "type": "phrase",
             "raw_de": raw_de,
             "clean_de": clean_de,
-            "text": en_text,
+            "en_text": en_text,
         })
 
         loop = asyncio.get_running_loop()
@@ -83,21 +83,11 @@ class SessionHandler:
             None,
             lambda: self._publisher.publish_phrase(self.session_id, en_text),
         )
+
         async with self._tts_lock:
             try:
-                first_chunk = True
-
-                def on_chunk(chunk: bytes) -> None:
-                    nonlocal first_chunk
-                    if first_chunk:
-                        first_chunk = False
-                        asyncio.run_coroutine_threadsafe(
-                            self._send_status({"type": "debug_audio_start", "size": len(chunk)}),
-                            loop,
-                        )
-                    asyncio.run_coroutine_threadsafe(
-                        self._publish_chunk(chunk), loop
-                    )
+                def on_chunk(audio_bytes: bytes) -> None:
+                    self._publisher.publish_audio(self.session_id, audio_bytes)
 
                 await loop.run_in_executor(
                     None,
@@ -105,16 +95,6 @@ class SessionHandler:
                 )
             except Exception as exc:
                 await self._send_status({"type": "tts_error", "error": str(exc)})
-
-    async def _publish_chunk(self, audio_bytes: bytes) -> None:
-        loop = asyncio.get_running_loop()
-        try:
-            await loop.run_in_executor(
-                None,
-                lambda: self._publisher.publish_audio(self.session_id, audio_bytes),
-            )
-        except Exception as exc:
-            await self._send_status({"type": "pubsub_error", "error": str(exc)})
 
     async def _send_status(self, msg: dict) -> None:
         if self._on_status:
