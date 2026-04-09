@@ -30,7 +30,7 @@ class STTSession:
 
         config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
         config.speech_recognition_language = "de-DE"
-        config.set_property("Speech_SegmentationSilenceTimeoutMs", "500")
+        config.set_property(speechsdk.PropertyId.Speech_SegmentationSilenceTimeoutMs, "500")
 
         self._recognizer = speechsdk.SpeechRecognizer(
             speech_config=config, audio_config=audio_config
