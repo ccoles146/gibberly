@@ -35,6 +35,7 @@ class SessionHandler:
         self._loop = loop
         self._on_status = on_status
         self.listener_count = 0
+        self._tts_lock = asyncio.Lock()
 
         self._publisher = PubSubPublisher(pubsub_cs)
         self.listener_token = self._publisher.get_listener_token(self.session_id)
@@ -82,27 +83,28 @@ class SessionHandler:
             None,
             lambda: self._publisher.publish_phrase(self.session_id, en_text),
         )
-        try:
-            first_chunk = True
+        async with self._tts_lock:
+            try:
+                first_chunk = True
 
-            def on_chunk(chunk: bytes) -> None:
-                nonlocal first_chunk
-                if first_chunk:
-                    first_chunk = False
+                def on_chunk(chunk: bytes) -> None:
+                    nonlocal first_chunk
+                    if first_chunk:
+                        first_chunk = False
+                        asyncio.run_coroutine_threadsafe(
+                            self._send_status({"type": "debug_audio_start", "size": len(chunk)}),
+                            loop,
+                        )
                     asyncio.run_coroutine_threadsafe(
-                        self._send_status({"type": "debug_audio_start", "size": len(chunk)}),
-                        loop,
+                        self._publish_chunk(chunk), loop
                     )
-                asyncio.run_coroutine_threadsafe(
-                    self._publish_chunk(chunk), loop
-                )
 
-            await loop.run_in_executor(
-                None,
-                lambda: self._tts.synthesize(en_text, on_chunk),
-            )
-        except Exception as exc:
-            await self._send_status({"type": "tts_error", "error": str(exc)})
+                await loop.run_in_executor(
+                    None,
+                    lambda: self._tts.synthesize(en_text, on_chunk),
+                )
+            except Exception as exc:
+                await self._send_status({"type": "tts_error", "error": str(exc)})
 
     async def _publish_chunk(self, audio_bytes: bytes) -> None:
         loop = asyncio.get_running_loop()
