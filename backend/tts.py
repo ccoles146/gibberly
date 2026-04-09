@@ -23,12 +23,7 @@ class TTSSynthesizer:
         )
 
     def synthesize(self, text: str, on_audio_chunk: Callable[[bytes], None]) -> None:
-        result_future = self._synthesizer.start_speaking_text_async(text)
-        result = result_future.get()
-        audio_stream = speechsdk.AudioDataStream(result)
-        buffer = bytes(_CHUNK_SIZE)
-        while True:
-            filled = audio_stream.read_data(buffer)
-            if filled == 0:
-                break
-            on_audio_chunk(buffer[:filled])
+        result = self._synthesizer.speak_text_async(text).get()
+        audio = result.audio_data  # bytes — no buffer-passing, works on all SDK versions
+        for i in range(0, len(audio), _CHUNK_SIZE):
+            on_audio_chunk(audio[i:i + _CHUNK_SIZE])
