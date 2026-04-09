@@ -79,12 +79,13 @@ class SessionHandler:
         })
 
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            lambda: self._publisher.publish_phrase(self.session_id, en_text),
-        )
 
         async with self._tts_lock:
+            await loop.run_in_executor(
+                None,
+                lambda: self._publisher.publish_phrase(self.session_id, en_text),
+            )
+
             try:
                 def on_chunk(audio_bytes: bytes) -> None:
                     self._publisher.publish_audio(self.session_id, audio_bytes)
