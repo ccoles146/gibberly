@@ -67,6 +67,7 @@ class SessionHandler:
 
         en_text = await self._translator.translate(clean_de)
         if not en_text:
+            await self._send_status({"type": "translator_error", "chunk": clean_de})
             return
 
         await self._send_status({
