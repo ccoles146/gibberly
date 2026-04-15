@@ -1,10 +1,37 @@
 (function () {
-  const btn           = document.getElementById('listen-btn');
-  const statusEl      = document.getElementById('status');
-  const phraseEl      = document.getElementById('last-phrase');
-  const debugEl       = document.getElementById('debug');
-  const muteWarningEl = document.getElementById('mute-warning');
+  const btn              = document.getElementById('listen-btn');
+  const statusEl         = document.getElementById('status');
+  const phraseEl         = document.getElementById('last-phrase');
+  const debugEl          = document.getElementById('debug');
+  const muteWarningEl    = document.getElementById('mute-warning');
+  const transcriptList   = document.getElementById('transcript-list');
+  const transcriptCount  = document.getElementById('transcript-count');
+  const dlTranscriptBtn  = document.getElementById('dl-transcript');
   let audioChunkCount = 0;
+
+  // English transcript accumulator
+  const phrases = [];
+
+  function addPhrase(text) {
+    phrases.push(text);
+    transcriptCount.textContent = phrases.length;
+    const div = document.createElement('div');
+    div.className = 'transcript-phrase';
+    div.textContent = text;
+    transcriptList.appendChild(div);
+    dlTranscriptBtn.disabled = false;
+  }
+
+  dlTranscriptBtn.addEventListener('click', () => {
+    if (!phrases.length) return;
+    const text = phrases.join('\n');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url  = URL.createObjectURL(blob);
+    Object.assign(document.createElement('a'), {
+      href: url, download: `gibberly-transcript-${session}-${Date.now()}.txt`
+    }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  });
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
@@ -120,7 +147,9 @@
         if (msg.data?.type === 'close') {
           disconnect('Session ended.');
         } else if (msg.data?.type === 'phrase') {
-          phraseEl.textContent = msg.data.text;
+          const text = msg.data.text || '';
+          phraseEl.textContent = text;
+          if (text) addPhrase(text);
         }
       }
     };

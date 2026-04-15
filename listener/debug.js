@@ -1,10 +1,14 @@
 (function () {
   // ── DOM refs ─────────────────────────────────────────────────────────────────
-  const connectBtn      = document.getElementById('connect-btn');
-  const dlMp3Btn        = document.getElementById('dl-mp3');
-  const dlJsonBtn       = document.getElementById('dl-json');
-  const clearBtn        = document.getElementById('clear-btn');
-  const statusText      = document.getElementById('status-text');
+  const connectBtn         = document.getElementById('connect-btn');
+  const refreshSessionBtn  = document.getElementById('refresh-session-btn');
+  const muteBtn            = document.getElementById('mute-btn');
+  const dlMp3Btn           = document.getElementById('dl-mp3');
+  const dlJsonBtn          = document.getElementById('dl-json');
+  const dlTranscriptEnBtn  = document.getElementById('dl-transcript-en');
+  const dlTranscriptDeBtn  = document.getElementById('dl-transcript-de');
+  const clearBtn           = document.getElementById('clear-btn');
+  const statusText         = document.getElementById('status-text');
   const phraseBar       = document.getElementById('phrase-bar');
   const logBody         = document.getElementById('log-body');
   const transcriptBody  = document.getElementById('transcript-body');
@@ -28,10 +32,12 @@
 
   // ── Session ──────────────────────────────────────────────────────────────────
   const params  = new URLSearchParams(window.location.search);
-  const session = params.get('session');
+  let session   = params.get('session');
 
   // ── Audio (Web Audio API — same as app.js, works everywhere) ─────────────────
   let audioCtx     = null;
+  let gainNode     = null;
+  let muted        = false;
   let nextPlayTime = 0;
 
   // ── WebSocket ────────────────────────────────────────────────────────────────
@@ -192,7 +198,7 @@
 
         const src     = audioCtx.createBufferSource();
         src.buffer    = audioBuffer;
-        src.connect(audioCtx.destination);
+        src.connect(gainNode);
         const now     = audioCtx.currentTime;
         lagS          = now - nextPlayTime;     // negative = buffer ahead (good)
         if (lagS > maxLagS) maxLagS = lagS;
@@ -236,6 +242,9 @@
     setStatus('Connecting…');
 
     audioCtx     = new (window.AudioContext || window.webkitAudioContext)();
+    gainNode     = audioCtx.createGain();
+    gainNode.gain.value = muted ? 0 : 1;
+    gainNode.connect(audioCtx.destination);
     nextPlayTime = 0;
     if (audioCtx.state === 'suspended') await audioCtx.resume();
 
@@ -285,6 +294,8 @@
           addPhraseMarkerRow(d.text || '(empty)');
           addTranscriptRow(phraseCount, d.raw_de || '', d.clean_de || '', d.text || '');
           eventLog.push({ type: 'phrase', raw_de: d.raw_de, clean_de: d.clean_de, text: d.text, wallNow: performance.now() });
+          dlTranscriptEnBtn.disabled = false;
+          dlTranscriptDeBtn.disabled = false;
           updateSummary();
         } else if (d?.type === 'close') {
           disconnect('Session ended.');
@@ -375,6 +386,48 @@
     });
   });
 
+  // ── Transcript downloads ──────────────────────────────────────────────────────
+  function downloadText(content, filename) {
+    const blob = new Blob([content], { type: 'text/plain' });
+    triggerDownload(blob, filename);
+  }
+
+  dlTranscriptEnBtn.addEventListener('click', () => {
+    if (!phraseStore.length) return;
+    downloadText(phraseStore.map(p => p.en_text).join('\n'), `gibberly-en-${session}-${Date.now()}.txt`);
+  });
+
+  dlTranscriptDeBtn.addEventListener('click', () => {
+    if (!phraseStore.length) return;
+    downloadText(phraseStore.map(p => p.clean_de || p.raw_de).join('\n'), `gibberly-de-${session}-${Date.now()}.txt`);
+  });
+
+  // ── Refresh session ───────────────────────────────────────────────────────────
+  refreshSessionBtn.addEventListener('click', async () => {
+    refreshSessionBtn.disabled = true;
+    refreshSessionBtn.textContent = 'Refreshing…';
+    try {
+      const res = await fetch('/current-session');
+      if (!res.ok) throw new Error('No active session');
+      const { session_id } = await res.json();
+      if (session_id !== session) {
+        if (connected) disconnect('Switching to new session…');
+        session = session_id;
+        const url = new URL(window.location.href);
+        url.searchParams.set('session', session_id);
+        window.history.replaceState(null, '', url.toString());
+        setStatus(`Session updated: ${session_id}`);
+      } else {
+        setStatus('Already on latest session.');
+      }
+    } catch (e) {
+      setStatus('Refresh failed: ' + e.message);
+    } finally {
+      refreshSessionBtn.disabled = false;
+      refreshSessionBtn.textContent = 'Refresh Session';
+    }
+  });
+
   // ── Clear ────────────────────────────────────────────────────────────────────
   clearBtn.addEventListener('click', () => {
     rawChunks.length         = 0;
@@ -390,9 +443,18 @@
     transcriptBody.innerHTML = '';
     phraseBar.textContent    = 'Waiting for phrases…';
     transcriptCount.textContent = '0 phrases';
-    dlMp3Btn.disabled        = true;
-    dlJsonBtn.disabled       = true;
+    dlMp3Btn.disabled            = true;
+    dlJsonBtn.disabled           = true;
+    dlTranscriptEnBtn.disabled   = true;
+    dlTranscriptDeBtn.disabled   = true;
     updateSummary();
+  });
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    if (gainNode) gainNode.gain.value = muted ? 0 : 1;
+    muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+    muteBtn.className   = muted ? 'muted' : '';
   });
 
   connectBtn.addEventListener('click', () => {

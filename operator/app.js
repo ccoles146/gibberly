@@ -13,6 +13,7 @@
   const channelSelect  = document.getElementById('channel-select');
   const fileInput      = document.getElementById('file-input');
   const actionBtn      = document.getElementById('action-btn');
+  const debugLinkEl    = document.getElementById('debug-link');
 
   // ── Config ──────────────────────────────────────────────────────────────────
   const backendWs  = window.GIBBERLY_BACKEND;                     // e.g. ws://host:8000
@@ -120,6 +121,17 @@
 
   populateDevices();
 
+  // ── Debug link — pre-populate from current session on load ─────────────────
+  (async function initDebugLink() {
+    try {
+      const res = await fetch(backendHttp + '/current-session');
+      if (res.ok) {
+        const { session_id } = await res.json();
+        debugLinkEl.href = `${backendHttp}/listen/debug.html?session=${session_id}`;
+      }
+    } catch (_) { /* no active session — link stays as plain debug.html */ }
+  })();
+
   // ── Elapsed timer ──────────────────────────────────────────────────────────
   let elapsedTimer = null;
   let startTime    = 0;
@@ -200,6 +212,7 @@
           startTimer();
           lastPhraseEl.textContent = '';
           listenerCount.textContent = '0';
+          debugLinkEl.href = `${backendHttp}/listen/debug.html?session=${msg.session_id}`;
           onOpen(ws);
         } else {
           handleStatusMessage(msg);

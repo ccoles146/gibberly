@@ -26,6 +26,9 @@
     }
     #connect-btn { background: #2563eb; color: #fff; }
     #connect-btn.connected { background: #dc2626; }
+    #refresh-session-btn { background: #1e3a5f; color: #93c5fd; }
+    #mute-btn { background: #1f2937; color: #9ca3af; }
+    #mute-btn.muted { background: #78350f; color: #fef3c7; }
     #dl-mp3 { background: #065f46; color: #d1fae5; }
     #dl-json { background: #374151; color: #d1d5db; }
     #clear-btn { background: #1f2937; color: #9ca3af; }
@@ -91,6 +94,8 @@
 
   <div class="controls">
     <button id="connect-btn">Connect</button>
+    <button id="refresh-session-btn">Refresh Session</button>
+    <button id="mute-btn">Mute</button>
     <button id="dl-mp3" disabled>Download MP3</button>
     <button id="dl-json" disabled>Download JSON Log</button>
     <button id="clear-btn">Clear</button>
@@ -123,6 +128,8 @@
     <div style="margin-top:0.5rem; display:flex; gap:0.4rem; margin-bottom:0.4rem; flex-wrap:wrap;">
       <button id="copy-transcript" style="padding:0.25rem 0.7rem; background:#1f2937; color:#9ca3af; border:1px solid #374151; border-radius:0.3rem; cursor:pointer; font-size:0.75rem;">Copy as text</button>
       <button id="copy-csv" style="padding:0.25rem 0.7rem; background:#1f2937; color:#9ca3af; border:1px solid #374151; border-radius:0.3rem; cursor:pointer; font-size:0.75rem;">Copy as CSV</button>
+      <button id="dl-transcript-en" disabled style="padding:0.25rem 0.7rem; background:#065f46; color:#d1fae5; border:none; border-radius:0.3rem; cursor:pointer; font-size:0.75rem;">Download EN</button>
+      <button id="dl-transcript-de" disabled style="padding:0.25rem 0.7rem; background:#1e3a5f; color:#93c5fd; border:none; border-radius:0.3rem; cursor:pointer; font-size:0.75rem;">Download DE</button>
     </div>
     <div style="max-height:45vh; overflow-y:auto; border:1px solid #1f2937; border-radius:0.4rem;" id="transcript-wrap">
       <table style="width:100%; border-collapse:collapse; font-size:0.78rem;">

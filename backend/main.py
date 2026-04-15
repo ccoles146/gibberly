@@ -30,6 +30,14 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/current-session")
+def current_session():
+    sid = app.state.current_session_id
+    if not sid:
+        raise HTTPException(status_code=404, detail="No active session")
+    return {"session_id": sid}
+
+
 @app.get("/negotiate")
 def negotiate(session: str):
     handler = app.state.sessions.get(session)
