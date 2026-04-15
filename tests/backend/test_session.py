@@ -180,7 +180,9 @@ def test_process_chunk_falls_back_on_llm_error(mock_pub_class, mock_stt_class, m
     assert len(fallback_msgs) == 1
     assert fallback_msgs[0]["chunk"] == "Der Herr ist gut."
 
-    mock_tts_class.return_value.synthesize.assert_called_once()
+    # TTS must NOT fire when translation failed — sending German to an English
+    # voice produces garbled audio.
+    mock_tts_class.return_value.synthesize.assert_not_called()
     loop.close()
 
 

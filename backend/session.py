@@ -1,6 +1,9 @@
 import asyncio
+import logging
 import uuid
 from typing import Awaitable, Callable, Optional
+
+log = logging.getLogger("gibberly")
 
 from backend.stt import STTSession
 from backend.llm_translator import LLMTranslator
@@ -65,7 +68,7 @@ class SessionHandler:
             en_text = result["en_text"]
         except Exception:
             clean_de = raw_de
-            en_text = raw_de
+            en_text = ""   # don't pass German text to English TTS
             await self._send_status({"type": "llm_fallback", "chunk": raw_de})
 
         if not en_text:
@@ -83,7 +86,7 @@ class SessionHandler:
         async with self._tts_lock:
             await loop.run_in_executor(
                 None,
-                lambda: self._publisher.publish_phrase(self.session_id, en_text),
+                lambda: self._publisher.publish_phrase(self.session_id, raw_de, clean_de, en_text),
             )
 
             try:
@@ -128,4 +131,7 @@ class SessionHandler:
 
     def stop(self) -> None:
         self._stt.stop()
-        self._publisher.send_close(self.session_id)
+        try:
+            self._publisher.send_close(self.session_id)
+        except Exception as exc:
+            log.warning("send_close failed (ignored): %s", exc)

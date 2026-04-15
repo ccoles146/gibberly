@@ -21,12 +21,12 @@ class PubSubPublisher:
         )
         return result["url"]
 
-    def publish_phrase(self, session_id: str, text: str) -> None:
+    def publish_phrase(self, session_id: str, raw_de: str, clean_de: str, en_text: str) -> None:
         import json
         group = f"session-{session_id}"
         self._client.send_to_group(
             group,
-            json.dumps({"type": "phrase", "text": text}),
+            json.dumps({"type": "phrase", "raw_de": raw_de, "clean_de": clean_de, "text": en_text}),
             content_type="application/json",
         )
 

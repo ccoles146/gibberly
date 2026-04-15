@@ -1,11 +1,16 @@
 import asyncio
+import logging
 from pathlib import Path
 from typing import Dict, Optional
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("gibberly")
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.websockets import WebSocketState
 
 from backend.config import settings
 from backend.session import SessionHandler
@@ -15,6 +20,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 app.state.sessions: Dict[str, SessionHandler] = {}
 app.state.current_session_id: Optional[str] = None
+app.state.active_ws: Optional[WebSocket] = None
 
 LISTENER_DIR = Path(__file__).parent.parent / "listener"
 
@@ -65,6 +71,31 @@ def listener_leave(session_id: str):
 @app.websocket("/ws/stream")
 async def stream(websocket: WebSocket):
     await websocket.accept()
+
+    # Close any stale connection from a previous console that didn't disconnect cleanly.
+    old_ws = app.state.active_ws
+    if old_ws is not None and old_ws.client_state != WebSocketState.DISCONNECTED:
+        log.warning("Stale WebSocket detected — closing before starting new session")
+        try:
+            await old_ws.close(code=1001)
+        except Exception:
+            pass
+
+    # Stop and discard any session left over from the stale connection.
+    old_sid = app.state.current_session_id
+    if old_sid:
+        log.warning("Stopping orphaned session %s", old_sid)
+        old_handler = app.state.sessions.pop(old_sid, None)
+        app.state.current_session_id = None  # clear state before stop, not after
+        if old_handler:
+            loop = asyncio.get_event_loop()
+            try:
+                await loop.run_in_executor(None, old_handler.stop)
+                log.info("Orphaned session %s stopped", old_sid)
+            except Exception as exc:
+                log.error("Error stopping orphaned session %s: %s", old_sid, exc)
+
+    app.state.active_ws = websocket
     loop = asyncio.get_event_loop()
 
     async def send_status(msg: dict) -> None:
@@ -85,7 +116,9 @@ async def stream(websocket: WebSocket):
     )
     app.state.sessions[handler.session_id] = handler
     app.state.current_session_id = handler.session_id
+    log.info("Session %s starting STT", handler.session_id)
     handler.start()
+    log.info("Session %s ready", handler.session_id)
 
     await websocket.send_json({
         "type": "session_created",
@@ -101,12 +134,22 @@ async def stream(websocket: WebSocket):
             data = await websocket.receive_bytes()
             handler.write(data)
     except WebSocketDisconnect:
-        pass
+        log.info("Session %s — operator disconnected (WebSocketDisconnect)", handler.session_id)
+    except Exception as exc:
+        log.error("Session %s — unexpected error in receive loop: %s", handler.session_id, exc)
     finally:
-        handler.stop()
+        # Clear state immediately so a reconnecting console never sees stale session.
         app.state.sessions.pop(handler.session_id, None)
         if app.state.current_session_id == handler.session_id:
             app.state.current_session_id = None
+        if app.state.active_ws is websocket:
+            app.state.active_ws = None
+        log.info("Session %s stopping…", handler.session_id)
+        try:
+            await loop.run_in_executor(None, handler.stop)
+            log.info("Session %s stopped", handler.session_id)
+        except Exception as exc:
+            log.error("Session %s stop error (state already cleared): %s", handler.session_id, exc)
 
 
 if LISTENER_DIR.exists():

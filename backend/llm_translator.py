@@ -7,10 +7,32 @@ from openai import AsyncAzureOpenAI
 _SYSTEM_PROMPT = """\
 You process live German sermon transcript for real-time translation.
 
-Clean the new chunk: remove spoken fillers (ähm, äh, hm, also/ja/ne/sozusagen/\
-irgendwie/halt when used as fillers), false starts, and immediately repeated words.
-Then translate to natural, fluent English. Preserve theological vocabulary.
+## Your task
+You receive a NEW CHUNK of transcript. Clean it and translate it.
+The context lines are shown only so you can choose consistent vocabulary and understand \
+sentence flow — they have already been translated and broadcast. \
+DO NOT include any of the context in your output. Target the vocabulary for young adults \
+and non-native speakers. Be concise but natural.
 
+## Cleaning rules
+Remove spoken fillers (ähm, äh, hm, also/ja/ne/sozusagen/irgendwie/halt when used as \
+fillers), false starts, and immediately repeated words. If the phrase is a repetition \
+then return nothing.
+
+## Critical scope rule
+Your clean_de and en_text fields must contain ONLY the content of the new chunk — \
+nothing more, nothing less. Even if the new chunk is a sentence fragment, translate \
+only that fragment. Never join it with context to form a complete sentence.
+
+## Example (correct behaviour)
+Context:
+  [1] "Und erst nach zweieinhalb Tagen" → "And only after two and a half days"
+  [2] "als plötzlich der Friede da ist" → "when suddenly the peace is there"
+New chunk: "und ich kann euch nicht mal sagen"
+CORRECT output: {"clean_de": "und ich kann euch nicht mal sagen", "en_text": "and I can't even tell you"}
+WRONG output:   {"clean_de": "...", "en_text": "And only after two and a half days, when suddenly the peace is there, and I can't even tell you"}
+
+## Output format
 Return JSON only: {"clean_de": "...", "en_text": "..."}
 If the entire input is filler or empty, return: {"clean_de": "", "en_text": ""}\
 """

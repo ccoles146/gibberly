@@ -22,6 +22,14 @@
     }
     #listen-btn:disabled { background: #444; cursor: default; }
     #last-phrase { margin-top: 2rem; font-size: 1rem; color: #aaa; text-align: center; }
+    #debug { margin-top: 1rem; font-size: 0.75rem; color: #555; text-align: center; font-family: monospace; }
+    #mute-warning {
+      display: none; margin-top: 1.5rem;
+      background: #78350f; color: #fef3c7;
+      border: 1px solid #b45309; border-radius: 0.75rem;
+      padding: 0.9rem 1.2rem; font-size: 0.9rem; text-align: center;
+      max-width: 320px;
+    }
   </style>
 </head>
 <body>
@@ -29,6 +37,10 @@
   <p id="status">Tap to connect</p>
   <button id="listen-btn">Listen</button>
   <p id="last-phrase"></p>
+  <div id="mute-warning">
+    &#x1F514; <strong>No sound?</strong> Check the silent switch on the left side of your iPhone — if it shows orange, flip it up.
+  </div>
+  <p id="debug"></p>
   <script src="app.js"></script>
 </body>
 </html>
