@@ -51,7 +51,7 @@ def _load() -> Settings:
         backend_host=os.environ.get("BACKEND_HOST", "0.0.0.0"),
         backend_port=int(os.environ.get("BACKEND_PORT", "8000")),
         stt_silence_timeout_ms=int(os.environ.get("STT_SILENCE_TIMEOUT_MS", "1000")),
-        stt_time_cap_s=float(os.environ.get("STT_TIME_CAP_S", "4.0")),
+        stt_time_cap_s=float(os.environ.get("STT_TIME_CAP_S", "8.0")),
         llm_context_window=int(os.environ.get("LLM_CONTEXT_WINDOW", "5")),
     )
 
