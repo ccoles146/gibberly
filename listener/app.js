@@ -96,7 +96,7 @@
     connectBtn.className   = state ? 'stop' : '';
     connectBtn.disabled    = false;
     langSelect.disabled    = state;
-    audioBtn.style.display = state ? '' : 'none';
+    audioBtn.style.display = state ? 'block' : 'none';
     if (!state) {
       audioBtn.textContent = '\uD83D\uDD0A Unmute audio';
       audioBtn.className = '';
@@ -205,11 +205,13 @@
         playAudio(buf);
       }
 
-      if (msg.type === 'message' && msg.dataType === 'json') {
-        if (msg.data?.type === 'close') {
+      if (msg.type === 'message' && (msg.dataType === 'json' || msg.dataType === 'text')) {
+        let d = msg.data;
+        if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = null; } }
+        if (d?.type === 'close') {
           disconnect('Session ended.');
-        } else if (msg.data?.type === 'phrase') {
-          const text = msg.data.text || '';
+        } else if (d?.type === 'phrase') {
+          const text = d.text || '';
           phraseEl.textContent = text;
           if (text) addPhrase(text);
         }

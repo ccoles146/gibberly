@@ -33,6 +33,7 @@
   // ── Session ──────────────────────────────────────────────────────────────────
   const params  = new URLSearchParams(window.location.search);
   let session   = params.get('session');
+  let debugLang = 'en'; // resolved to a valid target lang before connecting
 
   // ── Audio (Web Audio API — same as app.js, works everywhere) ─────────────────
   let audioCtx     = null;
@@ -230,16 +231,42 @@
   }
 
   async function getNegotiateUrl() {
-    const res = await fetch(`/negotiate?session=${session}`);
-    if (!res.ok) throw new Error(`negotiate ${res.status}`);
+    const res = await fetch(`/negotiate?session=${session}&lang=${debugLang}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`negotiate ${res.status}: ${body} (session=${session}, lang=${debugLang})`);
+    }
     const { url } = await res.json();
     return url;
   }
 
   async function connect() {
-    if (!session) { setStatus('No ?session= in URL'); return; }
     connectBtn.disabled = true;
     setStatus('Connecting…');
+
+    // Always sync to current session before connecting
+    try {
+      const res = await fetch('/current-session');
+      if (!res.ok) throw new Error('no active session');
+      const { session_id } = await res.json();
+      if (session_id !== session) {
+        session = session_id;
+        const url = new URL(window.location.href);
+        url.searchParams.set('session', session_id);
+        window.history.replaceState(null, '', url.toString());
+      }
+      // Pick a valid target language (not the source language)
+      const infoRes = await fetch(`/session/${session}/info`);
+      const sourceLang = infoRes.ok ? (await infoRes.json()).source_lang.split('-')[0] : null;
+      const langsRes = await fetch('/languages');
+      const langs = langsRes.ok ? await langsRes.json() : [];
+      const targets = sourceLang ? langs.filter(l => l.code !== sourceLang) : langs;
+      debugLang = targets.find(l => l.code === 'en')?.code || targets[0]?.code || 'en';
+    } catch (e) {
+      setStatus('No active session — start one from the operator.');
+      connectBtn.disabled = false;
+      return;
+    }
 
     audioCtx     = new (window.AudioContext || window.webkitAudioContext)();
     gainNode     = audioCtx.createGain();
@@ -258,18 +285,22 @@
       return;
     }
 
+    console.log('[debug] Opening WebSocket to:', pubsubUrl.substring(0, 80) + '…');
     ws = new WebSocket(pubsubUrl, 'json.webpubsub.azure.v1');
 
     ws.onopen = () => {
+      const group = `session-${session}-${debugLang}`;
+      console.log('[debug] WS open — joining group:', group);
       connected              = true;
       connectBtn.textContent = 'Disconnect';
       connectBtn.className   = 'connected';
       connectBtn.disabled    = false;
       setStatus('Connected — listening…');
-      ws.send(JSON.stringify({ type: 'joinGroup', group: `session-${session}` }));
+      ws.send(JSON.stringify({ type: 'joinGroup', group }));
     };
 
     ws.onmessage = (event) => {
+      console.log('[debug] WS message:', event.data.substring ? event.data.substring(0, 200) : event.data);
       let msg;
       try { msg = JSON.parse(event.data); } catch { return; }
 
@@ -292,7 +323,7 @@
           phraseCount++;
           phraseBar.textContent = d.text || '(empty)';
           addPhraseMarkerRow(d.text || '(empty)');
-          addTranscriptRow(phraseCount, d.raw_de || '', d.clean_de || '', d.text || '');
+          addTranscriptRow(phraseCount, d.clean_src || '', d.clean_src || '', d.text || '');
           eventLog.push({ type: 'phrase', raw_de: d.raw_de, clean_de: d.clean_de, text: d.text, wallNow: performance.now() });
           dlTranscriptEnBtn.disabled = false;
           dlTranscriptDeBtn.disabled = false;
@@ -304,9 +335,9 @@
       }
     };
 
-    ws.onerror = () => setStatus('WebSocket error.');
+    ws.onerror = (e) => { console.error('[debug] WS error:', e); setStatus('WebSocket error.'); };
 
-    ws.onclose = () => {
+    ws.onclose = (e) => { console.log('[debug] WS closed — code:', e.code, 'reason:', e.reason);
       connected              = false;
       connectBtn.textContent = 'Connect';
       connectBtn.className   = '';
@@ -462,8 +493,30 @@
     else connect();
   });
 
-  if (!session) {
-    setStatus('Add ?session=<id> to the URL');
-    connectBtn.disabled = true;
-  }
+  // On load, sync to the current session (handles stale ?session= after reconnect)
+  (async () => {
+    try {
+      const res = await fetch('/current-session');
+      if (!res.ok) throw new Error('no session');
+      const { session_id } = await res.json();
+      if (session_id !== session) {
+        session = session_id;
+        const url = new URL(window.location.href);
+        url.searchParams.set('session', session_id);
+        window.history.replaceState(null, '', url.toString());
+        setStatus(`Session updated: ${session_id}`);
+      } else {
+        setStatus('Ready.');
+      }
+      connectBtn.disabled = false;
+    } catch {
+      if (!session) {
+        setStatus('No active session — start one from the operator.');
+        connectBtn.disabled = true;
+      } else {
+        setStatus('Ready (could not verify session).');
+        connectBtn.disabled = false;
+      }
+    }
+  })();
 })();

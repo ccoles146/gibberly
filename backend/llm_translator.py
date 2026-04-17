@@ -105,7 +105,7 @@ class LLMTranslator:
                 {"role": "user", "content": self._build_user_message(raw)},
             ],
             temperature=0,
-            max_tokens=max(128, len(raw.split()) * 8),
+            max_tokens=max(512, len(raw.split()) * 12 * len(self._target_languages)),
             response_format={"type": "json_object"},
             timeout=5.0,
         )
