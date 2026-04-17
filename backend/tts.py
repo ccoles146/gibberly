@@ -1,21 +1,17 @@
 from typing import Callable
 import azure.cognitiveservices.speech as speechsdk
 
-_VOICE = "en-US-AndrewNeural"
-
 
 class TTSSynthesizer:
-    """Synthesizes English text to audio using Azure Speech SDK.
+    """Synthesizes text to audio using Azure Speech SDK.
 
     synthesize() is synchronous — run it in a thread executor.
     Returns one complete MP3 blob via on_audio_chunk once synthesis finishes.
-    Using the completed result (not the synthesizing event) guarantees the
-    blob is a self-contained, decodable MP3 file on the receiver side.
     """
 
-    def __init__(self, speech_key: str, speech_region: str):
+    def __init__(self, speech_key: str, speech_region: str, voice: str = "en-US-AndrewNeural"):
         config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
-        config.speech_synthesis_voice_name = _VOICE
+        config.speech_synthesis_voice_name = voice
         config.set_speech_synthesis_output_format(
             speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3
         )

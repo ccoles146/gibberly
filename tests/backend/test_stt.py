@@ -339,3 +339,33 @@ def test_tail_after_dispatched_no_prior_dispatch():
     from backend.stt import STTSession
     result = STTSession._tail_after_dispatched("Das ist gut.", "")
     assert result == "Das ist gut."
+
+
+@patch("backend.stt.speechsdk.SpeechConfig")
+@patch("backend.stt.speechsdk.SpeechRecognizer")
+@patch("backend.stt.speechsdk.audio.AudioConfig")
+@patch("backend.stt.speechsdk.audio.PushAudioInputStream")
+def test_stt_uses_given_language(mock_stream, mock_audio_cfg, mock_recognizer, mock_config):
+    mock_config_instance = MagicMock()
+    mock_config.return_value = mock_config_instance
+    mock_recognizer.return_value = MagicMock()
+
+    from backend.stt import STTSession
+    STTSession("key", "region", on_text=lambda t: None, language="en-US")
+
+    assert mock_config_instance.speech_recognition_language == "en-US"
+
+
+@patch("backend.stt.speechsdk.SpeechConfig")
+@patch("backend.stt.speechsdk.SpeechRecognizer")
+@patch("backend.stt.speechsdk.audio.AudioConfig")
+@patch("backend.stt.speechsdk.audio.PushAudioInputStream")
+def test_stt_defaults_to_german(mock_stream, mock_audio_cfg, mock_recognizer, mock_config):
+    mock_config_instance = MagicMock()
+    mock_config.return_value = mock_config_instance
+    mock_recognizer.return_value = MagicMock()
+
+    from backend.stt import STTSession
+    STTSession("key", "region", on_text=lambda t: None)
+
+    assert mock_config_instance.speech_recognition_language == "de-DE"

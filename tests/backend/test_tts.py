@@ -75,3 +75,21 @@ def test_synthesize_uses_andrew_neural_voice(mock_config, mock_synth_class):
     TTSSynthesizer("key", "westeurope")
 
     assert mock_config_instance.speech_synthesis_voice_name == "en-US-AndrewNeural"
+
+
+@patch("backend.tts.speechsdk.SpeechSynthesizer")
+@patch("backend.tts.speechsdk.SpeechConfig")
+def test_synthesize_uses_custom_voice(mock_config, mock_synth_class):
+    mock_config_instance = MagicMock()
+    mock_config.return_value = mock_config_instance
+    mock_synth = MagicMock()
+    mock_result = MagicMock()
+    mock_result.reason = speechsdk.ResultReason.SynthesizingAudioCompleted
+    mock_result.audio_data = b"\x00"
+    mock_synth.speak_text_async.return_value.get.return_value = mock_result
+    mock_synth_class.return_value = mock_synth
+
+    from backend.tts import TTSSynthesizer
+    TTSSynthesizer("key", "westeurope", voice="es-ES-ElviraNeural")
+
+    assert mock_config_instance.speech_synthesis_voice_name == "es-ES-ElviraNeural"

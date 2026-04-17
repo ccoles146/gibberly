@@ -37,6 +37,7 @@ class STTSession:
         on_text: Callable[[str], None],
         silence_timeout_ms: int = 1000,
         time_cap_s: float = 4.0,
+        language: str = "de-DE",
     ):
         self._on_text = on_text
         self._time_cap_s = time_cap_s
@@ -49,7 +50,7 @@ class STTSession:
         audio_config = speechsdk.audio.AudioConfig(stream=self._push_stream)
 
         config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
-        config.speech_recognition_language = "de-DE"
+        config.speech_recognition_language = language
         config.set_property(
             speechsdk.PropertyId.Speech_SegmentationSilenceTimeoutMs,
             str(silence_timeout_ms),
