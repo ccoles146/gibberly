@@ -49,7 +49,7 @@ def test_config_defaults():
         from backend.config import _load
         s = _load()
         assert s.stt_silence_timeout_ms == 1000
-        assert s.stt_time_cap_s == 4.0
+        assert s.stt_time_cap_s == 8.0
         assert s.llm_context_window == 5
 
 
