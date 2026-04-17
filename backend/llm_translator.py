@@ -1,6 +1,5 @@
 import json
 from collections import deque
-from typing import Tuple
 
 from openai import AsyncAzureOpenAI
 
@@ -71,11 +70,11 @@ class LLMTranslator:
         self._deployment = deployment
         self._target_languages = target_languages
         self._system_prompt = _build_system_prompt(target_languages)
-        self._context: deque[Tuple[str, str]] = deque(maxlen=context_window)
+        self._context: deque[tuple[str, str]] = deque(maxlen=context_window)
         self._pending: str = ""
 
         # Reference language key for context storage (prefer English)
-        ref_keys = [l["llm_key"] for l in target_languages if l["code"] == "en"]
+        ref_keys = [lang["llm_key"] for lang in target_languages if lang["code"] == "en"]
         self._ref_key = ref_keys[0] if ref_keys else target_languages[0]["llm_key"]
 
     def _build_user_message(self, raw: str) -> str:
@@ -111,7 +110,10 @@ class LLMTranslator:
             timeout=5.0,
         )
 
-        parsed = json.loads(response.choices[0].message.content.strip())
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("LLM returned empty content (possible content filter or token limit)")
+        parsed = json.loads(content.strip())
         clean_src = parsed.get("clean_src", "")
         self._pending = parsed.get("pending", "")
 
