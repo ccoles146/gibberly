@@ -1,10 +1,14 @@
 import json
+import logging
 from backend.languages import SUPPORTED_LANGUAGES
 from azure.messaging.webpubsubservice import WebPubSubServiceClient
+
+log = logging.getLogger("gibberly")
 
 
 class PubSubPublisher:
     def __init__(self, connection_string: str, hub: str = "sermon"):
+        # Normalize connection string: Azure Portal returns "AccessKey" but SDK expects "accesskey"
         normalized_cs = connection_string.replace("AccessKey=", "accesskey=")
         self._client = WebPubSubServiceClient.from_connection_string(
             normalized_cs, hub=hub
@@ -35,5 +39,5 @@ class PubSubPublisher:
             group = f"session-{session_id}-{lang['code']}"
             try:
                 self._client.send_to_group(group, '{"type":"close"}', content_type="application/json")
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("send_close to group %s failed (ignored): %s", group, exc)
