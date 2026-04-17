@@ -33,3 +33,9 @@ def test_get_target_languages_preserves_order():
     from backend.languages import SUPPORTED_LANGUAGES, get_target_languages
     targets = get_target_languages("xx")  # unknown source — all kept
     assert targets == SUPPORTED_LANGUAGES
+
+
+def test_no_duplicate_codes():
+    from backend.languages import SUPPORTED_LANGUAGES
+    codes = [lang["code"] for lang in SUPPORTED_LANGUAGES]
+    assert len(codes) == len(set(codes))
