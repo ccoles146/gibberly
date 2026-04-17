@@ -72,6 +72,7 @@
       cursor: pointer;
     }
     #channel-select { max-width: 100px; flex: none; }
+    #source-lang-select { flex: none; max-width: 160px; }
     #file-input { display: none; }
 
     #action-btn {
@@ -105,6 +106,10 @@
   <p id="last-phrase"></p>
 
   <div id="controls">
+    <select id="source-lang-select">
+      <option value="de-DE">German sermon</option>
+      <option value="en-US">English sermon</option>
+    </select>
     <select id="device-select"><option value="">Loading devices…</option></select>
     <select id="channel-select" style="display:none">
       <option value="left">Left</option>

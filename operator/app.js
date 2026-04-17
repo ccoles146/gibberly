@@ -14,6 +14,7 @@
   const fileInput      = document.getElementById('file-input');
   const actionBtn      = document.getElementById('action-btn');
   const debugLinkEl    = document.getElementById('debug-link');
+  const sourceLangSelect = document.getElementById('source-lang-select');
 
   // ── Config ──────────────────────────────────────────────────────────────────
   const backendWs  = window.GIBBERLY_BACKEND;                     // e.g. ws://host:8000
@@ -43,6 +44,7 @@
     actionBtn.className = s === 'live' ? 'stop' : '';
     statListeners.style.display = s === 'live' ? '' : 'none';
     statElapsed.style.display   = s === 'live' ? '' : 'none';
+    if (sourceLangSelect) sourceLangSelect.disabled = (s === 'live' || s === 'connecting');
   }
 
   setState('idle');
@@ -157,12 +159,12 @@
     if (msg.type === 'phrase') {
       const en = msg.en_text || msg.text || '';
       const parts = [];
-      if (msg.raw_de) parts.push(`raw: ${msg.raw_de}`);
-      if (msg.clean_de) parts.push(`clean: ${msg.clean_de}`);
+      if (msg.raw_src || msg.raw_de) parts.push(`raw: ${msg.raw_src || msg.raw_de}`);
+      if (msg.clean_src || msg.clean_de) parts.push(`clean: ${msg.clean_src || msg.clean_de}`);
       parts.push(`en: ${en}`);
       lastPhraseEl.innerHTML = parts.map(p => `<div>${p}</div>`).join('');
-      if (msg.raw_de) console.log(`[gibberly] raw:   ${msg.raw_de}`);
-      if (msg.clean_de) console.log(`[gibberly] clean: ${msg.clean_de}`);
+      if (msg.raw_src || msg.raw_de) console.log(`[gibberly] raw:   ${msg.raw_src || msg.raw_de}`);
+      if (msg.clean_src || msg.clean_de) console.log(`[gibberly] clean: ${msg.clean_src || msg.clean_de}`);
       if (en) console.log(`[gibberly] en:    ${en}`);
     } else if (msg.type === 'llm_fallback') {
       console.warn(`[gibberly] LLM fallback — chunk: ${msg.chunk}`);
@@ -200,7 +202,8 @@
 
   // ── Shared WebSocket session setup ─────────────────────────────────────────
   function openWebSocket(onOpen) {
-    const ws = new WebSocket(backendWs + '/ws/stream');
+    const sourceLang = sourceLangSelect ? sourceLangSelect.value : 'de-DE';
+    const ws = new WebSocket(`${backendWs}/ws/stream?source_lang=${sourceLang}`);
     ws.binaryType = 'arraybuffer';
 
     ws.onmessage = (evt) => {
