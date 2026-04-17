@@ -1,15 +1,26 @@
 (function () {
-  const btn              = document.getElementById('listen-btn');
-  const statusEl         = document.getElementById('status');
-  const phraseEl         = document.getElementById('last-phrase');
-  const debugEl          = document.getElementById('debug');
-  const muteWarningEl    = document.getElementById('mute-warning');
-  const transcriptList   = document.getElementById('transcript-list');
-  const transcriptCount  = document.getElementById('transcript-count');
-  const dlTranscriptBtn  = document.getElementById('dl-transcript');
-  let audioChunkCount = 0;
+  const connectBtn      = document.getElementById('connect-btn');
+  const audioBtn        = document.getElementById('audio-btn');
+  const statusEl        = document.getElementById('status');
+  const phraseEl        = document.getElementById('last-phrase');
+  const debugEl         = document.getElementById('debug');
+  const muteWarningEl   = document.getElementById('mute-warning');
+  const langSelect      = document.getElementById('lang-select');
+  const transcriptList  = document.getElementById('transcript-list');
+  const transcriptCount = document.getElementById('transcript-count');
+  const dlTranscriptBtn = document.getElementById('dl-transcript');
 
-  // English transcript accumulator
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  const params  = new URLSearchParams(window.location.search);
+  const session = params.get('session');
+  if (!session) {
+    statusEl.textContent = 'No session ID in URL.';
+    connectBtn.disabled = true;
+    return;
+  }
+
+  // ── Transcript ─────────────────────────────────────────────────────────────
   const phrases = [];
 
   function addPhrase(text) {
@@ -24,8 +35,7 @@
 
   dlTranscriptBtn.addEventListener('click', () => {
     if (!phrases.length) return;
-    const text = phrases.join('\n');
-    const blob = new Blob([text], { type: 'text/plain' });
+    const blob = new Blob([phrases.join('\n')], { type: 'text/plain' });
     const url  = URL.createObjectURL(blob);
     Object.assign(document.createElement('a'), {
       href: url, download: `gibberly-transcript-${session}-${Date.now()}.txt`
@@ -33,49 +43,69 @@
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   });
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  // ── Language selector setup ────────────────────────────────────────────────
+  let chosenLang = 'en';
 
-  function dbg(msg) { if (debugEl) debugEl.textContent = msg; }
+  async function loadLanguages() {
+    try {
+      const [langsRes, infoRes] = await Promise.all([
+        fetch('/languages'),
+        fetch(`/session/${session}/info`),
+      ]);
+      const langs = langsRes.ok ? await langsRes.json() : [];
+      const sourceLang = infoRes.ok ? (await infoRes.json()).source_lang : null;
+      const sourceCode = sourceLang ? sourceLang.split('-')[0] : null;
 
-  const params  = new URLSearchParams(window.location.search);
-  const session = params.get('session');
-  if (!session) {
-    statusEl.textContent = 'No session ID in URL.';
-    btn.disabled = true;
-    return;
+      const filtered = sourceCode ? langs.filter(l => l.code !== sourceCode) : langs;
+
+      langSelect.innerHTML = '';
+      filtered.forEach(l => {
+        const opt = document.createElement('option');
+        opt.value = l.code;
+        opt.textContent = l.name;
+        langSelect.appendChild(opt);
+      });
+
+      // Default to English if available, otherwise first option
+      const enOpt = filtered.find(l => l.code === 'en');
+      chosenLang = enOpt ? 'en' : (filtered[0]?.code || 'en');
+      langSelect.value = chosenLang;
+    } catch (e) {
+      langSelect.innerHTML = '<option value="en">English</option>';
+    }
   }
+
+  langSelect.addEventListener('change', () => { chosenLang = langSelect.value; });
+
+  loadLanguages();
+
+  // ── Connection state ───────────────────────────────────────────────────────
+  function dbg(msg) { if (debugEl) debugEl.textContent = msg; }
 
   let audioCtx     = null;
   let nextPlayTime = 0;
   let ws           = null;
   let connected    = false;
+  let audioActive  = false;
 
   function setStatus(msg) { statusEl.textContent = msg; }
 
   function setConnected(state) {
-    connected            = state;
-    btn.textContent      = state ? 'Stop' : 'Listen';
-    btn.style.background = state ? '#dc2626' : '#2563eb';
-    btn.disabled         = false;
+    connected              = state;
+    connectBtn.textContent = state ? 'Disconnect' : 'Connect';
+    connectBtn.className   = state ? 'stop' : '';
+    connectBtn.disabled    = false;
+    langSelect.disabled    = state;
+    audioBtn.style.display = state ? '' : 'none';
+    if (!state) {
+      audioBtn.textContent = '\uD83D\uDD0A Unmute audio';
+      audioBtn.className = '';
+    }
   }
 
-  async function getNegotiateUrl() {
-    const res = await fetch(`/negotiate?session=${session}`);
-    if (!res.ok) throw new Error('Session not found');
-    const { url } = await res.json();
-    return url;
-  }
-
-  function base64ToArrayBuffer(b64) {
-    const bin  = atob(b64);
-    const buf  = new ArrayBuffer(bin.length);
-    const view = new Uint8Array(buf);
-    for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
-    return buf;
-  }
-
-  // Each message is now a complete MP3 file — decodeAudioData is reliable.
+  // ── Audio playback ─────────────────────────────────────────────────────────
   async function playAudio(arrayBuffer) {
+    if (!audioCtx) return;
     let audioBuffer;
     try {
       audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
@@ -92,33 +122,67 @@
     nextPlayTime = startAt + audioBuffer.duration;
   }
 
+  function base64ToArrayBuffer(b64) {
+    const bin  = atob(b64);
+    const buf  = new ArrayBuffer(bin.length);
+    const view = new Uint8Array(buf);
+    for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+    return buf;
+  }
+
+  // ── Audio mute/unmute ──────────────────────────────────────────────────────
+  audioBtn.addEventListener('click', async () => {
+    if (!audioActive) {
+      // Unmute
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      nextPlayTime = 0;
+      fetch(`/session/${session}/audio/join?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
+      audioActive = true;
+      audioBtn.textContent = '\uD83D\uDD07 Mute audio';
+      audioBtn.className = 'active';
+      if (isIOS && muteWarningEl) muteWarningEl.style.display = 'block';
+    } else {
+      // Mute
+      if (audioCtx) { audioCtx.suspend(); }
+      fetch(`/session/${session}/audio/leave?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
+      audioActive = false;
+      audioBtn.textContent = '\uD83D\uDD0A Unmute audio';
+      audioBtn.className = '';
+      if (muteWarningEl) muteWarningEl.style.display = 'none';
+    }
+  });
+
+  // ── Connect / disconnect ───────────────────────────────────────────────────
   function disconnect(reason) {
     if (muteWarningEl) muteWarningEl.style.display = 'none';
+    if (audioActive && audioCtx) {
+      audioCtx.close();
+      audioCtx = null;
+      fetch(`/session/${session}/audio/leave?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
+      audioActive = false;
+    }
     phraseEl.textContent = '';
-    audioChunkCount      = 0;
-    nextPlayTime         = 0;
+    nextPlayTime = 0;
     if (ws && ws.readyState < WebSocket.CLOSING) ws.close();
     ws = null;
-    if (audioCtx) { audioCtx.close(); audioCtx = null; }
-    setStatus(reason || 'Stopped.');
+    setStatus(reason || 'Disconnected.');
     setConnected(false);
   }
 
   async function connect() {
-    btn.disabled = true;
+    connectBtn.disabled = true;
     setStatus('Connecting…');
-    audioChunkCount = 0;
-    nextPlayTime    = 0;
-
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    nextPlayTime = 0;
 
     let pubsubUrl;
     try {
-      pubsubUrl = await getNegotiateUrl();
+      const res = await fetch(`/negotiate?session=${session}&lang=${chosenLang}`);
+      if (!res.ok) throw new Error('Session not found');
+      pubsubUrl = (await res.json()).url;
     } catch (e) {
-      setStatus('Failed to get session: ' + e.message);
-      btn.disabled = false;
+      setStatus('Failed to connect: ' + e.message);
+      connectBtn.disabled = false;
       return;
     }
 
@@ -126,10 +190,9 @@
 
     ws.onopen = () => {
       setConnected(true);
-      setStatus('Connected — waiting for audio…');
-      if (isIOS && muteWarningEl) muteWarningEl.style.display = 'block';
-      ws.send(JSON.stringify({ type: 'joinGroup', group: `session-${session}` }));
-      fetch(`/session/${session}/join`, { method: 'POST' }).catch(() => {});
+      setStatus('Connected — reading transcript…');
+      ws.send(JSON.stringify({ type: 'joinGroup', group: `session-${session}-${chosenLang}` }));
+      fetch(`/session/${session}/join?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
     };
 
     ws.onmessage = (event) => {
@@ -137,9 +200,8 @@
       try { msg = JSON.parse(event.data); } catch { return; }
 
       if (msg.type === 'message' && msg.dataType === 'binary') {
-        audioChunkCount++;
         const buf = base64ToArrayBuffer(msg.data);
-        dbg(`phrases: ${audioChunkCount} | bytes: ${buf.byteLength} | ctx: ${audioCtx?.state}`);
+        dbg(`audio bytes: ${buf.byteLength} | ctx: ${audioCtx?.state}`);
         playAudio(buf);
       }
 
@@ -157,7 +219,7 @@
     ws.onerror = () => setStatus('Connection error.');
 
     ws.onclose = (evt) => {
-      fetch(`/session/${session}/leave`, { method: 'POST' }).catch(() => {});
+      fetch(`/session/${session}/leave?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
       const wasConnected = connected;
       connected = false;
       if (muteWarningEl) muteWarningEl.style.display = 'none';
@@ -165,15 +227,13 @@
         setStatus('Disconnected.');
       } else {
         const reason = evt.code ? ` (code ${evt.code})` : '';
-        setStatus(`Could not connect to audio stream${reason}. Try again.`);
+        setStatus(`Could not connect${reason}. Try again.`);
       }
-      btn.textContent      = 'Listen';
-      btn.style.background = '#2563eb';
-      btn.disabled         = false;
+      setConnected(false);
     };
   }
 
-  btn.addEventListener('click', () => {
+  connectBtn.addEventListener('click', () => {
     if (connected) disconnect();
     else connect();
   });
