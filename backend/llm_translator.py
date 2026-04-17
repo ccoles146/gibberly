@@ -4,45 +4,55 @@ from typing import Tuple
 
 from openai import AsyncAzureOpenAI
 
-_SYSTEM_PROMPT = """\
-You process live German sermon transcript for real-time translation.
+
+def _build_system_prompt(target_languages: list[dict]) -> str:
+    lang_keys = "\n".join(
+        f'- {lang["llm_key"]}: natural {lang["name"]} interpretation'
+        for lang in target_languages
+    )
+    return f"""\
+You process live sermon transcript for real-time interpretation.
 
 ## Your task
-You receive a NEW CHUNK of transcript. Clean it and translate it.
-The context lines are shown only so you can choose consistent vocabulary and understand \
-sentence flow — they have already been translated and broadcast. \
-DO NOT include any of the context in your output. Target the vocabulary for young adults \
-and non-native speakers. Be concise but natural.
+You receive a NEW CHUNK of transcript (possibly mid-sentence or a sentence fragment).
+Interpret it into natural, complete phrases in each target language.
+Even if the chunk is a sentence fragment, produce complete natural phrases by inferring
+the speaker's meaning from context. Do not translate literally — interpret.
+
+The text has been machine-transcribed and may contain transcription errors.
+Try to correct them if the meaning seems out of context (e.g. "impossible" transcribed
+as "possible" — catch those). If correction is uncertain, translate as given.
+
+The context lines are shown so you can maintain consistent vocabulary and understand
+sentence flow — they have already been broadcast. DO NOT include context in your output.
+Target vocabulary for young adults and non-native speakers. Be concise but natural.
 
 ## Cleaning rules
-Remove spoken fillers (ähm, äh, hm, also/ja/ne/sozusagen/irgendwie/halt when used as \
-fillers), false starts, and immediately repeated words. If the phrase is a repetition \
-then return nothing.
-
-## Critical scope rule
-Your clean_de and en_text fields must contain ONLY the content of the new chunk — \
-nothing more, nothing less. Even if the new chunk is a sentence fragment, translate \
-only that fragment. Never join it with context to form a complete sentence.
-
-## Example (correct behaviour)
-Context:
-  [1] "Und erst nach zweieinhalb Tagen" → "And only after two and a half days"
-  [2] "als plötzlich der Friede da ist" → "when suddenly the peace is there"
-New chunk: "und ich kann euch nicht mal sagen"
-CORRECT output: {"clean_de": "und ich kann euch nicht mal sagen", "en_text": "and I can't even tell you"}
-WRONG output:   {"clean_de": "...", "en_text": "And only after two and a half days, when suddenly the peace is there, and I can't even tell you"}
+Remove spoken fillers (ähm, äh, hm, also/ja/ne/sozusagen/irgendwie/halt when used as
+fillers), false starts, and immediately repeated words. If the entire input is filler,
+return empty strings for all fields.
 
 ## Output format
-Return JSON only: {"clean_de": "...", "en_text": "..."}
-If the entire input is filler or empty, return: {"clean_de": "", "en_text": ""}\
+Return JSON only with exactly these keys:
+- clean_src: cleaned source text (fillers and false starts removed)
+- pending: brief note on any unresolved grammatical arc (e.g. "mid-enumeration,
+  continuation expected"); empty string if the thought is complete
+{lang_keys}
+
+## Example
+Context: [1] "Und erst nach zweieinhalb Tagen" → "And only after two and a half days"
+New chunk: "als plötzlich der Friede da ist"
+CORRECT output: {{"clean_src": "als plötzlich der Friede da ist", "en_text": "when suddenly the peace arrived", "pending": ""}}
+WRONG output: any output that re-includes the context lines\
 """
 
 
 class LLMTranslator:
-    """Cleans and translates German text in a single GPT-4o mini call.
+    """Interprets and translates sermon text in a single GPT call.
 
-    Maintains a rolling context window of recent utterances for coherent translation.
-    Raises on API failure so the caller can fall back to raw text.
+    Maintains a rolling context window of recent utterances.
+    Carries forward a 'pending' arc note when a chunk ends mid-thought.
+    Raises on API failure so the caller can fall back.
     """
 
     def __init__(
@@ -50,6 +60,7 @@ class LLMTranslator:
         endpoint: str,
         api_key: str,
         deployment: str,
+        target_languages: list[dict],
         context_window: int = 5,
     ):
         self._client = AsyncAzureOpenAI(
@@ -58,40 +69,57 @@ class LLMTranslator:
             api_version="2024-08-01-preview",
         )
         self._deployment = deployment
+        self._target_languages = target_languages
+        self._system_prompt = _build_system_prompt(target_languages)
         self._context: deque[Tuple[str, str]] = deque(maxlen=context_window)
+        self._pending: str = ""
 
-    def _build_user_message(self, raw_de: str) -> str:
+        # Reference language key for context storage (prefer English)
+        ref_keys = [l["llm_key"] for l in target_languages if l["code"] == "en"]
+        self._ref_key = ref_keys[0] if ref_keys else target_languages[0]["llm_key"]
+
+    def _build_user_message(self, raw: str) -> str:
         parts = []
-        if self._context:
-            parts.append("Recent context (for reference only — do NOT re-translate):")
-            for i, (de, en) in enumerate(self._context, 1):
-                parts.append(f'[{i}] "{de}" → "{en}"')
+        if self._pending:
+            parts.append(f"Open thread: {self._pending}")
             parts.append("")
-        parts.append("New chunk to process:")
-        parts.append(f'"{raw_de}"')
+        if self._context:
+            parts.append("Recent context (reference only — do NOT re-translate):")
+            for i, (src, ref) in enumerate(self._context, 1):
+                parts.append(f'[{i}] "{src}" → "{ref}"')
+            parts.append("")
+        parts.append("New chunk to interpret:")
+        parts.append(f'"{raw}"')
         return "\n".join(parts)
 
-    async def translate(self, raw_de: str) -> dict:
-        if not raw_de.strip():
-            return {"clean_de": "", "en_text": ""}
+    async def translate(self, raw: str) -> dict:
+        if not raw.strip():
+            result = {"clean_src": ""}
+            for lang in self._target_languages:
+                result[lang["llm_key"]] = ""
+            return result
 
         response = await self._client.chat.completions.create(
             model=self._deployment,
             messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": self._build_user_message(raw_de)},
+                {"role": "system", "content": self._system_prompt},
+                {"role": "user", "content": self._build_user_message(raw)},
             ],
             temperature=0,
-            max_tokens=max(128, len(raw_de.split()) * 6),
+            max_tokens=max(128, len(raw.split()) * 8),
             response_format={"type": "json_object"},
-            timeout=3.0,
+            timeout=5.0,
         )
 
-        result = json.loads(response.choices[0].message.content.strip())
-        clean_de = result.get("clean_de", "")
-        en_text = result.get("en_text", "")
+        parsed = json.loads(response.choices[0].message.content.strip())
+        clean_src = parsed.get("clean_src", "")
+        self._pending = parsed.get("pending", "")
 
-        if clean_de:
-            self._context.append((clean_de, en_text))
+        result = {"clean_src": clean_src}
+        for lang in self._target_languages:
+            result[lang["llm_key"]] = parsed.get(lang["llm_key"], "")
 
-        return {"clean_de": clean_de, "en_text": en_text}
+        if clean_src:
+            self._context.append((clean_src, result.get(self._ref_key, "")))
+
+        return result
