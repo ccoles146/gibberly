@@ -27,7 +27,7 @@ The STT `time_cap_s` (default 4s) forces dispatch of mid-sentence German fragmen
 
 The system prompt is rewritten with these principles:
 
-- **Interpret, don't literally translate.** Produce natural, complete English phrases even when the German input is a mid-sentence fragment. Infer the likely completion of a thought from context.
+- **Interpret, don't literally translate.** Produce natural, complete English phrases even when the German input is a mid-sentence fragment. This text has been machine transcribed and may include incorrect transcriptions, try to correct them if the meaning seems out of context or simply do not translate, this is particularly important where for example 'impossible' was transcribed as 'possible', try to catch those.
 - **Use context actively.** The rolling context window (last 5 pairs) is framing for completing fragments, not just vocabulary reference.
 - **Pending thread.** The LLM returns an optional `pending` string — a brief note on any unresolved grammatical arc (e.g. "speaker is mid-enumeration"). This is stored in `LLMTranslator._pending` and prepended to the next user message as: `Open thread: <pending>`. This helps the next call pick up the thought without re-reading context pairs.
 - **Output format** remains `{"clean_src": "...", "en_text": "...", "pending": "..."}` where `pending` may be empty. All existing target language keys are also present (see Change 2).
@@ -59,6 +59,7 @@ SUPPORTED_LANGUAGES = [
     {"code": "de", "name": "German",     "voice": "de-DE-KatjaNeural",       "llm_key": "de_text"},
     {"code": "es", "name": "Spanish",    "voice": "es-ES-ElviraNeural",      "llm_key": "es_text"},
     {"code": "fr", "name": "French",     "voice": "fr-FR-DeniseNeural",      "llm_key": "fr_text"},
+    {"code": "hr", "name": "Croatian",     "voice": "hr-HR-GabrijelaNeural",   "llm_key": "hr_text"},
     {"code": "pt", "name": "Portuguese", "voice": "pt-BR-FranciscaNeural",   "llm_key": "pt_text"},
     {"code": "pl", "name": "Polish",     "voice": "pl-PL-ZofiaNeural",       "llm_key": "pl_text"},
     {"code": "ro", "name": "Romanian",   "voice": "ro-RO-AlinaNeural",       "llm_key": "ro_text"},
