@@ -149,7 +149,8 @@ Mac distribution requires an Apple Developer account ($99/year). GitHub Actions 
 | File | Change |
 |------|--------|
 | `backend/main.py` | Register HTTP auth middleware; call `validate_request` at WebSocket upgrade |
-| `backend/session.py` | Accept `LicenceContext`; call `on_session_start` after start, `on_session_end` on close |
+| `backend/session.py` | Accept `LicenceContext`; call `on_session_start` after start, `on_session_end` on close; enforce `MAX_SESSION_HOURS` hard limit |
+| `backend/config.py` | Add `max_session_hours` setting (default 3.0) |
 | `backend/main.py` | Broadcast `{type: "server_restarting"}` on SIGTERM before shutdown |
 | `operator/app.js` | Read `window.GIBBERLY_API_URL` if present; add `reconnecting` state with exponential backoff |
 | `.env.example` | Inline comments referencing Bicep output field names |
@@ -171,6 +172,21 @@ docker-compose up
 ```
 
 The existing `docs/azure-setup.md` remains as the manual fallback.
+
+---
+
+## Session Hard Limit
+
+Sessions have a configurable absolute maximum duration, enforced in `SessionHandler` regardless of activity. When the limit is reached the session is closed cleanly (same path as a normal stop): `on_session_end` is called, Web PubSub receives a `{type: "session_ended", reason: "max_duration"}` event, and the operator console returns to idle.
+
+**Default: 3 hours.** Configurable via `MAX_SESSION_HOURS` in `.env` — self-hosters can raise or lower it. The paid hosted service sets it to 3 hours and the Electron app surfaces a warning at 15 minutes remaining.
+
+Add to `backend/config.py`:
+```python
+max_session_hours: float = 3.0  # MAX_SESSION_HOURS env var
+```
+
+`SessionHandler` already has a 60-minute idle timeout; the hard limit is independent — the session ends at whichever comes first.
 
 ---
 
