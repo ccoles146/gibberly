@@ -85,3 +85,34 @@ def test_config_raises_on_missing_openai_endpoint():
         from backend.config import _load
         with pytest.raises(ValueError, match="AZURE_OPENAI_ENDPOINT"):
             _load()
+
+
+def test_config_session_timeout_defaults_to_3600():
+    env = {
+        "AZURE_SPEECH_KEY": "sk",
+        "AZURE_SPEECH_REGION": "westeurope",
+        "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://x.webpubsub.azure.com;AccessKey=a;Version=1.0;",
+        "AZURE_OPENAI_ENDPOINT": "https://my-openai.openai.azure.com/",
+        "AZURE_OPENAI_API_KEY": "oai-key",
+        "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        from backend.config import _load
+        s = _load()
+        assert s.session_timeout_s == 3600
+
+
+def test_config_session_timeout_overridable():
+    env = {
+        "AZURE_SPEECH_KEY": "sk",
+        "AZURE_SPEECH_REGION": "westeurope",
+        "AZURE_WEBPUBSUB_CONNECTION_STRING": "Endpoint=https://x.webpubsub.azure.com;AccessKey=a;Version=1.0;",
+        "AZURE_OPENAI_ENDPOINT": "https://my-openai.openai.azure.com/",
+        "AZURE_OPENAI_API_KEY": "oai-key",
+        "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
+        "SESSION_TIMEOUT_S": "1800",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        from backend.config import _load
+        s = _load()
+        assert s.session_timeout_s == 1800

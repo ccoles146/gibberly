@@ -18,6 +18,7 @@ class Settings:
     stt_silence_timeout_ms: int
     stt_time_cap_s: float
     llm_context_window: int
+    session_timeout_s: int
 
 
 def _load() -> Settings:
@@ -53,6 +54,7 @@ def _load() -> Settings:
         stt_silence_timeout_ms=int(os.environ.get("STT_SILENCE_TIMEOUT_MS", "1000")),
         stt_time_cap_s=float(os.environ.get("STT_TIME_CAP_S", "8.0")),
         llm_context_window=int(os.environ.get("LLM_CONTEXT_WINDOW", "5")),
+        session_timeout_s=int(os.environ.get("SESSION_TIMEOUT_S", "3600")),
     )
 
 
