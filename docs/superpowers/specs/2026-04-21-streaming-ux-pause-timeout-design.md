@@ -24,7 +24,11 @@ On receipt, the listener splits the phrase text into words and appends them to a
 - Trims `displayWords` to the last 30 words (sliding window).
 - Re-renders the reading pane as a single `<p>` element.
 
-The interval period (ms/word) is controlled by a **speed slider** on the listener page. The slider is visible only while connected. Range: 100 ms/word (fast) to 500 ms/word (slow), default 200 ms/word. The chosen value is persisted in `localStorage` under the key `gibberly_word_speed`.
+The interval period is controlled by a **speed multiplier slider** on the listener page, visible only while connected. The trickle interval adapts to the estimated incoming speech rate:
+
+**Speed estimation:** Each time a phrase arrives from PubSub, the listener records `{timestamp, wordCount}`. The estimated pace is calculated over a rolling 1-minute window: `base_ms_per_word = 60000 / words_in_last_60s`. Before enough data has accumulated (< 60 s of history), the estimate defaults to 150 words/minute (400 ms/word).
+
+**Slider:** Multiplier range 0.5× to 1.5×, default 1.0×, step 0.25×. The actual trickle interval = `base_ms_per_word / multiplier`. At 1.0× the display matches the estimated speech pace; at 1.5× words appear faster than they arrive (queue drains); at 0.5× words appear slower (queue grows). The chosen multiplier is persisted in `localStorage` under the key `gibberly_word_speed_multiplier`.
 
 ### Pause indication
 
