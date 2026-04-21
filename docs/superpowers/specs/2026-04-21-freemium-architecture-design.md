@@ -215,6 +215,63 @@ The existing state machine (idle → connecting → live → error) gains a `rec
 
 This makes a process crash a ~10 second interruption rather than a manual recovery event. In-memory session state is still lost on restart (Redis deferred to a later milestone).
 
+## Security
+
+### CORS
+
+`CORSMiddleware` is restricted to explicit origins — never wildcard. Configurable via `CORS_ORIGINS` in `.env` (comma-separated). Default for self-hosted: `http://localhost:8000`. The paid hosted backend sets it to the production domain only. Electron's BrowserWindow origin is `null` (file://), so the Electron app bypasses CORS entirely and is not listed.
+
+### Listener join tokens
+
+Session URLs are not shared as bare `?session=<uuid>` links. When the operator starts a session, the backend generates a short-lived **join token** (HMAC-SHA256 of `session_id + secret + expiry`, 24-hour TTL). The QR code and listener URL embed this token: `/listen?session=<id>&token=<tok>`. The `/negotiate` endpoint validates the token before issuing a Web PubSub credential. This prevents anyone who guesses or observes a session ID from joining as a listener without the operator's QR code.
+
+`backend/config.py` gains a `listener_token_secret` setting (random 32-byte hex, required in `.env`). The Bicep template generates one automatically.
+
+### Rate limiting
+
+`slowapi` applied to all public HTTP endpoints. Limits:
+- `/languages`, `/health`: 60/minute per IP
+- `/session/{id}/join`, `/leave`, `/audio/join`, `/audio/leave`: 20/minute per IP
+- `/negotiate`: 10/minute per IP
+
+WebSocket connections are rate-limited at the OS/reverse-proxy level (nginx `limit_conn`).
+
+### HTTPS enforcement
+
+The backend assumes TLS is terminated at the reverse proxy (nginx or Azure App Service). `listener_url` construction uses `https://` unconditionally in production. A `FORCE_HTTPS=true` env var (default `true`) adds an HSTS header to all responses. Self-hosters who run locally set `FORCE_HTTPS=false`.
+
+### Debug page
+
+`/listen/debug.html` is only served when `DEBUG=true` in `.env`. In production it returns 404.
+
+### Security headers
+
+All responses include:
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'`
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+
+### Error sanitisation
+
+Exception strings are never forwarded to WebSocket clients or HTTP responses. Clients receive a fixed message type (e.g. `{type: "tts_error"}`); full detail is logged server-side only. `backend/main.py` installs a global exception handler enforcing this.
+
+### Input validation
+
+All `lang` query parameters are validated against the `SUPPORTED_LANGUAGES` list before use. Invalid values return HTTP 400. WebSocket binary frames are capped at 1 MB; larger frames are rejected and the connection closed.
+
+### Modified files (security additions)
+
+| File | Change |
+|------|--------|
+| `backend/main.py` | CORS restricted origins; HSTS + CSP + security headers middleware; rate limiting; global error sanitiser; 1 MB WS frame cap |
+| `backend/config.py` | Add `cors_origins`, `listener_token_secret`, `force_https`, `debug` settings |
+| `backend/auth.py` | `generate_listener_token(session_id)` and `validate_listener_token(session_id, token)` helpers |
+| `operator/app.js` | Use `textContent` not `innerHTML` for all user-sourced data; sanitise console log output |
+| `listener/app.js` | Use `textContent`/DOM methods for language list and transcript rendering |
+| `deploy/azure.bicep` | Generate `LISTENER_TOKEN_SECRET` and output to `.env` |
+
+---
+
 ## Scalability Note (V1 caveat)
 
 Sessions live in FastAPI process memory. For dozens of concurrent organisations this is sufficient. When horizontal scaling is needed, move session state to Redis — `SessionHandler` in `session.py` is already isolated enough for this swap without touching other modules.
@@ -232,3 +289,7 @@ Sessions live in FastAPI process memory. For dozens of concurrent organisations 
 - Killing the backend process mid-session: Electron operator shows "Reconnecting…" and recovers within 10 seconds
 - Second session start with same licence key returns HTTP 429 (paid path only)
 - Azure Table Storage has a usage record after each session completes
+- Listener URL without a valid join token returns HTTP 401 from `/negotiate`
+- `/listen/debug.html` returns 404 when `DEBUG=false`
+- `curl -X OPTIONS` with a foreign `Origin` header returns 403
+- Error response bodies contain no stack traces or Azure resource names
