@@ -41,3 +41,12 @@ class PubSubPublisher:
                 self._client.send_to_group(group, '{"type":"close"}', content_type="application/json")
             except Exception as exc:
                 log.warning("send_close to group %s failed (ignored): %s", group, exc)
+
+    def broadcast_event(self, session_id: str, event: dict) -> None:
+        payload = json.dumps(event)
+        for lang in SUPPORTED_LANGUAGES:
+            group = f"session-{session_id}-{lang['code']}"
+            try:
+                self._client.send_to_group(group, payload, content_type="application/json")
+            except Exception as exc:
+                log.warning("broadcast_event to %s failed: %s", group, exc)

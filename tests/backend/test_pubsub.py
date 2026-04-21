@@ -69,3 +69,25 @@ def test_send_close_broadcasts_to_all_lang_groups(mock_client_class):
     called_groups = {c[0][0] for c in mock_client.send_to_group.call_args_list}
     for lang in SUPPORTED_LANGUAGES:
         assert f"session-sess1-{lang['code']}" in called_groups
+
+
+@patch("backend.pubsub.WebPubSubServiceClient")
+def test_broadcast_event_sends_to_all_lang_groups(mock_client_class):
+    mock_client = MagicMock()
+    mock_client_class.from_connection_string.return_value = mock_client
+
+    from backend.pubsub import PubSubPublisher
+    from backend.languages import SUPPORTED_LANGUAGES
+    publisher = PubSubPublisher("Endpoint=https://test.webpubsub.azure.com;AccessKey=abc;Version=1.0;")
+    publisher.broadcast_event("sess1", {"type": "paused"})
+
+    assert mock_client.send_to_group.call_count == len(SUPPORTED_LANGUAGES)
+    called_groups = {c[0][0] for c in mock_client.send_to_group.call_args_list}
+    for lang in SUPPORTED_LANGUAGES:
+        assert f"session-sess1-{lang['code']}" in called_groups
+
+    # Verify payload is JSON with correct type
+    first_call = mock_client.send_to_group.call_args_list[0]
+    payload = json.loads(first_call[0][1])
+    assert payload == {"type": "paused"}
+    assert first_call[1]["content_type"] == "application/json"
