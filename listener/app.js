@@ -2,7 +2,11 @@
   const connectBtn      = document.getElementById('connect-btn');
   const audioBtn        = document.getElementById('audio-btn');
   const statusEl        = document.getElementById('status');
-  const phraseEl        = document.getElementById('last-phrase');
+  const readingPaneEl   = document.getElementById('reading-pane');
+  const pausedPill      = document.getElementById('paused-pill');
+  const speedRow        = document.getElementById('speed-row');
+  const speedSlider     = document.getElementById('speed-slider');
+  const speedLabel      = document.getElementById('speed-label');
   const debugEl         = document.getElementById('debug');
   const muteWarningEl   = document.getElementById('mute-warning');
   const langSelect      = document.getElementById('lang-select');
@@ -43,7 +47,78 @@
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   });
 
-  // ── Language selector setup ────────────────────────────────────────────────
+  // ── Word queue / sliding window ────────────────────────────────────────────
+  const MAX_DISPLAY_WORDS = 30;
+  const DEFAULT_BASE_MS   = 400;   // fallback: 150 wpm
+  const SPEED_KEY         = 'gibberly_word_speed_multiplier';
+
+  let displayWords  = [];
+  let wordQueue     = [];
+  let tickTimer     = null;
+  const phraseHistory = [];   // [{ts: ms, count: n}]
+
+  function estimateBaseMsPerWord() {
+    const now    = Date.now();
+    const cutoff = now - 60000;
+    while (phraseHistory.length && phraseHistory[0].ts < cutoff) phraseHistory.shift();
+    if (phraseHistory.length < 2) return DEFAULT_BASE_MS;
+    const totalWords = phraseHistory.reduce((s, e) => s + e.count, 0);
+    const windowMs   = phraseHistory[phraseHistory.length - 1].ts - phraseHistory[0].ts;
+    if (windowMs < 1000) return DEFAULT_BASE_MS;
+    return windowMs / totalWords;
+  }
+
+  function getTrickleInterval() {
+    const multiplier = parseFloat(speedSlider.value);
+    return estimateBaseMsPerWord() / multiplier;
+  }
+
+  function startTick() {
+    if (tickTimer !== null) return;
+    function tick() {
+      if (wordQueue.length > 0) {
+        const word = wordQueue.shift();
+        displayWords.push(word);
+        if (displayWords.length > MAX_DISPLAY_WORDS) displayWords.shift();
+        readingPaneEl.textContent = displayWords.join(' ');
+      }
+      if (wordQueue.length > 0) {
+        tickTimer = setTimeout(tick, getTrickleInterval());
+      } else {
+        tickTimer = null;
+      }
+    }
+    tickTimer = setTimeout(tick, getTrickleInterval());
+  }
+
+  function onPhrase(text) {
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return;
+    phraseHistory.push({ ts: Date.now(), count: words.length });
+    wordQueue.push(...words);
+    addPhrase(text);
+    startTick();
+  }
+
+  function clearReadingPane() {
+    wordQueue    = [];
+    displayWords = [];
+    if (tickTimer !== null) { clearTimeout(tickTimer); tickTimer = null; }
+    readingPaneEl.textContent = '';
+  }
+
+  // ── Speed slider ───────────────────────────────────────────────────────────
+  const savedSpeed = parseFloat(localStorage.getItem(SPEED_KEY) || '1');
+  speedSlider.value = savedSpeed;
+  speedLabel.textContent = savedSpeed + '×';
+
+  speedSlider.addEventListener('input', () => {
+    const v = parseFloat(speedSlider.value);
+    speedLabel.textContent = v + '×';
+    localStorage.setItem(SPEED_KEY, v);
+  });
+
+  // ── Language selector ──────────────────────────────────────────────────────
   let chosenLang = 'en';
 
   async function loadLanguages() {
@@ -66,7 +141,6 @@
         langSelect.appendChild(opt);
       });
 
-      // Default to English if available, otherwise first option
       const enOpt = filtered.find(l => l.code === 'en');
       chosenLang = enOpt ? 'en' : (filtered[0]?.code || 'en');
       langSelect.value = chosenLang;
@@ -76,7 +150,6 @@
   }
 
   langSelect.addEventListener('change', () => { chosenLang = langSelect.value; });
-
   loadLanguages();
 
   // ── Connection state ───────────────────────────────────────────────────────
@@ -97,9 +170,12 @@
     connectBtn.disabled    = false;
     langSelect.disabled    = state;
     audioBtn.style.display = state ? 'block' : 'none';
+    speedRow.style.display = state ? '' : 'none';
     if (!state) {
       audioBtn.textContent = '\uD83D\uDD0A Unmute audio';
       audioBtn.className = '';
+      pausedPill.style.display = 'none';
+      clearReadingPane();
     }
   }
 
@@ -133,7 +209,6 @@
   // ── Audio mute/unmute ──────────────────────────────────────────────────────
   audioBtn.addEventListener('click', async () => {
     if (!audioActive) {
-      // Unmute
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') await audioCtx.resume();
       nextPlayTime = 0;
@@ -143,7 +218,6 @@
       audioBtn.className = 'active';
       if (isIOS && muteWarningEl) muteWarningEl.style.display = 'block';
     } else {
-      // Mute
       if (audioCtx) { audioCtx.suspend(); }
       fetch(`/session/${session}/audio/leave?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
       audioActive = false;
@@ -162,7 +236,6 @@
       fetch(`/session/${session}/audio/leave?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
       audioActive = false;
     }
-    phraseEl.textContent = '';
     nextPlayTime = 0;
     if (ws && ws.readyState < WebSocket.CLOSING) ws.close();
     ws = null;
@@ -212,8 +285,11 @@
           disconnect('Session ended.');
         } else if (d?.type === 'phrase') {
           const text = d.text || '';
-          phraseEl.textContent = text;
-          if (text) addPhrase(text);
+          if (text) onPhrase(text);
+        } else if (d?.type === 'paused') {
+          pausedPill.style.display = 'block';
+        } else if (d?.type === 'resumed') {
+          pausedPill.style.display = 'none';
         }
       }
     };

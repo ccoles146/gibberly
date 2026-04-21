@@ -39,7 +39,30 @@
       display: none;
     }
     #audio-btn.active { background: #065f46; border-color: #059669; color: #d1fae5; }
-    #last-phrase { font-size: 1rem; color: #aaa; text-align: center; }
+    #reading-pane-wrapper {
+      width: 100%; max-width: 480px;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 0.4rem;
+      min-height: 4rem;
+    }
+    #paused-pill {
+      display: none;
+      background: #374151; color: #9ca3af;
+      border-radius: 1rem; padding: 0.2rem 0.75rem;
+      font-size: 0.8rem;
+    }
+    #reading-pane {
+      font-size: 1.15rem; color: #f0f0f0;
+      line-height: 1.7; text-align: center;
+      min-height: 2.5rem; word-break: break-word;
+    }
+    #speed-row {
+      display: none;
+      width: 100%; max-width: 480px;
+      text-align: center;
+    }
+    #speed-row label { font-size: 0.8rem; color: #6b7280; }
+    #speed-slider { width: 60%; margin-top: 0.25rem; cursor: pointer; }
     #debug { font-size: 0.75rem; color: #555; text-align: center; font-family: monospace; }
     #mute-warning {
       display: none;
@@ -88,7 +111,15 @@
   <button id="connect-btn">Connect</button>
   <button id="audio-btn">&#x1F50A; Unmute audio</button>
 
-  <p id="last-phrase"></p>
+  <div id="reading-pane-wrapper">
+    <div id="paused-pill">⏸ Paused</div>
+    <p id="reading-pane"></p>
+  </div>
+
+  <div id="speed-row">
+    <label for="speed-slider">Speed: <span id="speed-label">1.0×</span></label><br>
+    <input type="range" id="speed-slider" min="0.5" max="1.5" step="0.25" value="1.0">
+  </div>
 
   <div id="mute-warning">
     &#x1F514; <strong>No sound?</strong> Check the silent switch on the left side of your iPhone — if it shows orange, flip it up.
