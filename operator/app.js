@@ -13,15 +13,16 @@
   const channelSelect  = document.getElementById('channel-select');
   const fileInput      = document.getElementById('file-input');
   const actionBtn      = document.getElementById('action-btn');
+  const pauseBtn       = document.getElementById('pause-btn');
   const debugLinkEl    = document.getElementById('debug-link');
   const sourceLangSelect = document.getElementById('source-lang-select');
 
   // ── Config ──────────────────────────────────────────────────────────────────
-  const backendWs  = window.GIBBERLY_BACKEND;                     // e.g. ws://host:8000
+  const backendWs  = window.GIBBERLY_BACKEND;
   const backendHttp = backendWs.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
   const liveUrl    = backendHttp + '/listen/live';
 
-  // ── QR code (rendered once on load, never changes) ──────────────────────────
+  // ── QR code ─────────────────────────────────────────────────────────────────
   (function renderQr() {
     const qr = qrcode(0, 'M');
     qr.addData(liveUrl);
@@ -32,7 +33,6 @@
   })();
 
   // ── State machine ──────────────────────────────────────────────────────────
-  // States: idle | connecting | live | error
   let state = 'idle';
 
   function setState(s, msg) {
@@ -45,6 +45,13 @@
     statListeners.style.display = s === 'live' ? '' : 'none';
     statElapsed.style.display   = s === 'live' ? '' : 'none';
     if (sourceLangSelect) sourceLangSelect.disabled = (s === 'live' || s === 'connecting');
+    pauseBtn.style.display = s === 'live' ? '' : 'none';
+    if (s !== 'live') {
+      paused = false;
+      pauseBtn.textContent = '⏸ Pause';
+      pauseBtn.className = '';
+      pauseBtn.disabled = true;
+    }
   }
 
   setState('idle');
@@ -55,11 +62,10 @@
   const STORAGE_CHANNEL   = 'gibberly_channel';
 
   async function populateDevices() {
-    // Request permission so device labels are populated
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach(t => t.stop());
-    } catch (_) { /* permission denied — labels will be generic */ }
+    } catch (_) {}
 
     let devices;
     try {
@@ -73,7 +79,7 @@
       updateChannelVisibility(false);
       return;
     }
-    const inputs  = devices.filter(d => d.kind === 'audioinput');
+    const inputs = devices.filter(d => d.kind === 'audioinput');
 
     deviceSelect.innerHTML = '';
     inputs.forEach(d => {
@@ -88,7 +94,6 @@
     fileOpt.textContent = 'Browse file…';
     deviceSelect.appendChild(fileOpt);
 
-    // Restore saved device
     const saved = localStorage.getItem(STORAGE_DEVICE);
     if (saved && [...deviceSelect.options].some(o => o.value === saved)) {
       deviceSelect.value = saved;
@@ -115,7 +120,6 @@
   });
   fileInput.addEventListener('change', () => {
     if (!fileInput.files.length) {
-      // User cancelled — revert to first real device
       deviceSelect.selectedIndex = 0;
       updateChannelVisibility();
     }
@@ -123,7 +127,7 @@
 
   populateDevices();
 
-  // ── Debug link — pre-populate from current session on load ─────────────────
+  // ── Debug link ─────────────────────────────────────────────────────────────
   (async function initDebugLink() {
     try {
       const res = await fetch(backendHttp + '/current-session');
@@ -131,7 +135,7 @@
         const { session_id } = await res.json();
         debugLinkEl.href = `${backendHttp}/listen/debug.html?session=${session_id}`;
       }
-    } catch (_) { /* no active session — link stays as plain debug.html */ }
+    } catch (_) {}
   })();
 
   // ── Elapsed timer ──────────────────────────────────────────────────────────
@@ -153,7 +157,44 @@
     elapsedEl.textContent = '00:00';
   }
 
-  // ── Status message handler (filled in Task 6) ─────────────────────────────
+  // ── Pause / keepalive ──────────────────────────────────────────────────────
+  let paused          = false;
+  let activeWs        = null;
+  let resumeCapture   = null;
+  let keepaliveTimer  = null;
+
+  function startKeepalive() {
+    keepaliveTimer = setInterval(() => {
+      if (activeWs && activeWs.readyState === WebSocket.OPEN) {
+        activeWs.send(JSON.stringify({ type: 'keepalive' }));
+      }
+    }, 30000);
+  }
+
+  function stopKeepalive() {
+    if (keepaliveTimer) clearInterval(keepaliveTimer);
+    keepaliveTimer = null;
+  }
+
+  pauseBtn.addEventListener('click', () => {
+    if (!activeWs || activeWs.readyState !== WebSocket.OPEN) return;
+    if (!paused) {
+      paused = true;
+      pauseBtn.textContent = '▶ Resume';
+      pauseBtn.className = 'active';
+      activeWs.send(JSON.stringify({ type: 'pause' }));
+      startKeepalive();
+    } else {
+      paused = false;
+      pauseBtn.textContent = '⏸ Pause';
+      pauseBtn.className = '';
+      stopKeepalive();
+      activeWs.send(JSON.stringify({ type: 'resume' }));
+      if (resumeCapture) resumeCapture();
+    }
+  });
+
+  // ── Status message handler ─────────────────────────────────────────────────
   function handleStatusMessage(msg) {
     console.log('[gibberly] msg:', msg.type, msg);
     if (msg.type === 'phrase') {
@@ -163,9 +204,6 @@
       if (msg.clean_src || msg.clean_de) parts.push(`clean: ${msg.clean_src || msg.clean_de}`);
       parts.push(`en: ${en}`);
       lastPhraseEl.innerHTML = parts.map(p => `<div>${p}</div>`).join('');
-      if (msg.raw_src || msg.raw_de) console.log(`[gibberly] raw:   ${msg.raw_src || msg.raw_de}`);
-      if (msg.clean_src || msg.clean_de) console.log(`[gibberly] clean: ${msg.clean_src || msg.clean_de}`);
-      if (en) console.log(`[gibberly] en:    ${en}`);
     } else if (msg.type === 'llm_fallback') {
       console.warn(`[gibberly] LLM fallback — chunk: ${msg.chunk}`);
     } else if (msg.type === 'tts_error') {
@@ -179,8 +217,8 @@
     }
   }
 
-  // ── Session management (filled in Tasks 6–7) ──────────────────────────────
-  let stopSession = null;  // set when a session is active; call to stop it
+  // ── Session management ─────────────────────────────────────────────────────
+  let stopSession = null;
 
   actionBtn.addEventListener('click', () => {
     if (state === 'live' && stopSession) {
@@ -205,6 +243,7 @@
     const sourceLang = sourceLangSelect ? sourceLangSelect.value : 'de-DE';
     const ws = new WebSocket(`${backendWs}/ws/stream?source_lang=${sourceLang}`);
     ws.binaryType = 'arraybuffer';
+    activeWs = ws;
 
     ws.onmessage = (evt) => {
       if (typeof evt.data === 'string') {
@@ -212,6 +251,7 @@
         try { msg = JSON.parse(evt.data); } catch { return; }
         if (msg.type === 'session_created') {
           setState('live');
+          pauseBtn.disabled = false;
           startTimer();
           lastPhraseEl.textContent = '';
           listenerCount.textContent = '0';
@@ -228,6 +268,10 @@
     };
 
     ws.onclose = () => {
+      activeWs = null;
+      stopKeepalive();
+      paused = false;
+      resumeCapture = null;
       if (state === 'live' || state === 'connecting') setState('idle');
       stopTimer();
       stopSession = null;
@@ -241,8 +285,9 @@
     const deviceId    = deviceSelect.value;
     const channelMode = channelSelect.value || 'left';
     let audioCtx, workletNode, stream;
+    resumeCapture = null;
 
-    const ws = openWebSocket(async (activeWs) => {
+    const ws = openWebSocket(async (activeWsRef) => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -262,23 +307,23 @@
         });
 
         workletNode.port.onmessage = (e) => {
-          if (activeWs.readyState === WebSocket.OPEN) {
-            activeWs.send(e.data);
+          if (activeWsRef.readyState === WebSocket.OPEN && !paused) {
+            activeWsRef.send(e.data);
           }
         };
 
         const source = audioCtx.createMediaStreamSource(stream);
         source.connect(workletNode);
-        // Do NOT connect workletNode to destination — no local playback echo
 
       } catch (err) {
         setState('error', err.message);
         stopSession = null;
-        activeWs.close();
+        activeWsRef.close();
       }
     });
 
     stopSession = () => {
+      stopKeepalive();
       if (workletNode) workletNode.disconnect();
       if (stream) stream.getTracks().forEach(t => t.stop());
       if (audioCtx) audioCtx.close();
@@ -296,33 +341,40 @@
 
     let driveTimer = null;
 
-    const ws = openWebSocket((activeWs) => {
+    const ws = openWebSocket((activeWsRef) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        // Standard PCM WAV: skip 44-byte header, treat rest as 16kHz 16-bit mono Int16
-        const buf   = e.target.result;
-        const pcm   = new Int16Array(buf, 44);   // skip WAV header
-        let offset  = 0;
-        const CHUNK = 320;   // 20 ms at 16kHz
+        const buf  = e.target.result;
+        const pcm  = new Int16Array(buf, 44);
+        let offset = 0;
+        const CHUNK = 320;
 
         function sendNext() {
-          if (offset >= pcm.length || activeWs.readyState !== WebSocket.OPEN) {
-            if (activeWs.readyState === WebSocket.OPEN) activeWs.close();
+          if (offset >= pcm.length || activeWsRef.readyState !== WebSocket.OPEN) {
+            if (activeWsRef.readyState === WebSocket.OPEN) activeWsRef.close();
+            driveTimer = null;
+            return;
+          }
+          if (paused) {
+            driveTimer = null;
             return;
           }
           const chunk = pcm.slice(offset, offset + CHUNK);
-          activeWs.send(chunk.buffer);
+          activeWsRef.send(chunk.buffer);
           offset += CHUNK;
           driveTimer = setTimeout(sendNext, 20);
         }
 
+        resumeCapture = () => { if (driveTimer === null) sendNext(); };
         sendNext();
       };
       reader.readAsArrayBuffer(file);
     });
 
     stopSession = () => {
+      stopKeepalive();
       clearTimeout(driveTimer);
+      resumeCapture = null;
       ws.close();
       setState('idle');
       stopTimer();

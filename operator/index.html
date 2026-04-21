@@ -87,6 +87,18 @@
     #action-btn:disabled { background: #444; cursor: default; }
     #action-btn.stop { background: #dc2626; }
     #action-btn.stop:hover:not(:disabled) { background: #b91c1c; }
+    #pause-btn {
+      flex: none;
+      padding: 0.6rem 1.5rem;
+      background: #374151; color: #f0f0f0;
+      border: none; border-radius: 0.5rem;
+      font-size: 0.95rem; cursor: pointer;
+      transition: background 0.15s;
+      display: none;
+    }
+    #pause-btn:hover:not(:disabled) { background: #4b5563; }
+    #pause-btn:disabled { background: #1f2937; color: #4b5563; cursor: default; }
+    #pause-btn.active { background: #065f46; color: #d1fae5; }
   </style>
 </head>
 <body>
@@ -118,6 +130,7 @@
     </select>
     <input type="file" id="file-input" accept=".wav">
     <button id="action-btn">▶ Start</button>
+    <button id="pause-btn" disabled>⏸ Pause</button>
   </div>
 
   <script src="config.js"></script>
