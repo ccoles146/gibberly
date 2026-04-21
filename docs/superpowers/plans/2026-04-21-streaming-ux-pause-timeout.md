@@ -1556,6 +1556,147 @@ git commit -m "feat: word-by-word sliding window with adaptive speed on listener
 
 ---
 
+## Task 9: Audio level meter on operator panel
+
+**Files:**
+- Modify: `operator/worklet.js`
+- Modify: `operator/index.html`
+- Modify: `operator/app.js`
+
+This task builds directly on the code produced by Task 7. Complete Task 7 first.
+
+- [ ] **Step 1: Add RMS level posting to `operator/worklet.js`**
+
+In the constructor, after `this._prevSample = 0;`, add:
+
+```js
+    this._levelCounter  = 0;
+    this._levelInterval = 20;  // post a level message every 20 process() calls (~18/s at 48 kHz)
+```
+
+At the end of `process()`, just before `return true;`, add:
+
+```js
+    // Post level ~18 times/second (throttled)
+    this._levelCounter++;
+    if (this._levelCounter >= this._levelInterval) {
+      this._levelCounter = 0;
+      let sumSq = 0;
+      for (let i = 0; i < mono.length; i++) sumSq += mono[i] * mono[i];
+      this.port.postMessage({ type: 'level', rms: Math.sqrt(sumSq / mono.length) });
+    }
+```
+
+- [ ] **Step 2: Add meter HTML and CSS to `operator/index.html`**
+
+In the `<style>` block, after the `#pause-btn.active` rule, add:
+
+```css
+    #audio-meter {
+      display: none;
+      width: 100%; max-width: 480px;
+      height: 6px;
+      background: #1f2937;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    #audio-meter-bar {
+      height: 100%; width: 0%;
+      background: #22c55e;
+      border-radius: 3px;
+      transition: width 0.06s ease-out;
+    }
+```
+
+In the `<body>`, after `</div>` closing `#controls`, add:
+
+```html
+  <div id="audio-meter"><div id="audio-meter-bar"></div></div>
+```
+
+- [ ] **Step 3: Add meter logic to `operator/app.js`**
+
+**3a.** In the DOM refs section (after `const sourceLangSelect = ...`), add:
+
+```js
+  const audioMeter    = document.getElementById('audio-meter');
+  const audioMeterBar = document.getElementById('audio-meter-bar');
+```
+
+**3b.** In the pause/keepalive section (after `let keepaliveTimer = null;`), add:
+
+```js
+  let levelDecayTimer = null;
+
+  function setAudioLevel(rms) {
+    const visual = Math.min(1, rms * 6);  // amplify: speech RMS is typically 0.02–0.15
+    audioMeterBar.style.width = (visual * 100) + '%';
+    if (levelDecayTimer) clearTimeout(levelDecayTimer);
+    levelDecayTimer = setTimeout(() => {
+      audioMeterBar.style.width = '0%';
+      levelDecayTimer = null;
+    }, 150);
+  }
+
+  function clearAudioLevel() {
+    if (levelDecayTimer) { clearTimeout(levelDecayTimer); levelDecayTimer = null; }
+    audioMeterBar.style.width = '0%';
+  }
+```
+
+**3c.** In `setState`, after `pauseBtn.style.display = s === 'live' ? '' : 'none';`, add:
+
+```js
+    audioMeter.style.display = s === 'live' ? '' : 'none';
+    if (s !== 'live') clearAudioLevel();
+```
+
+**3d.** In `openWebSocket`'s `ws.onclose` handler, after `stopKeepalive();`, add:
+
+```js
+      clearAudioLevel();
+```
+
+**3e.** In `startDeviceSession`, replace the `workletNode.port.onmessage` handler:
+
+```js
+        workletNode.port.onmessage = (e) => {
+          if (e.data instanceof ArrayBuffer) {
+            if (activeWsRef.readyState === WebSocket.OPEN && !paused) {
+              activeWsRef.send(e.data);
+            }
+          } else if (e.data?.type === 'level') {
+            setAudioLevel(e.data.rms);
+          }
+        };
+```
+
+**3f.** In `startFileSession`'s `sendNext` function, after `const chunk = pcm.slice(offset, offset + CHUNK);`, add:
+
+```js
+          let sumSq = 0;
+          for (let i = 0; i < chunk.length; i++) {
+            const s = chunk[i] / 32768;
+            sumSq += s * s;
+          }
+          setAudioLevel(Math.sqrt(sumSq / chunk.length));
+```
+
+**3g.** In `startFileSession`'s `stopSession` lambda, after `stopKeepalive();`, add:
+
+```js
+      clearAudioLevel();
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add operator/worklet.js operator/index.html operator/app.js
+git commit -m "feat: audio level meter on operator panel"
+```
+
+---
+
 ## Final check
 
 - [ ] **Run the full test suite one last time**
