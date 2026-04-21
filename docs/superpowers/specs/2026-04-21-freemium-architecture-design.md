@@ -39,8 +39,12 @@ async def validate_request(request: Request) -> LicenceContext:
     """Called at session start. Raises HTTP 401 if key invalid/expired/exhausted."""
     return LicenceContext(unlimited=True)
 
+async def on_session_start(ctx: LicenceContext, session_id: str) -> None:
+    """Called after session start is confirmed. Registers session as active."""
+    pass
+
 async def on_session_end(ctx: LicenceContext, audio_in_sec: float, audio_out_sec: float, language_count: int) -> None:
-    """Called when session closes. Reports usage to licence server (best-effort)."""
+    """Called when session closes. Reports usage and releases concurrent slot."""
     pass
 ```
 
@@ -65,7 +69,34 @@ CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
 5. If valid: session proceeds; quota debited at session end via `on_session_end`
 6. If quota exhausted or subscription lapsed: returns HTTP 401, Electron shows native dialog
 7. **Mid-session quota exhaustion**: session is allowed to complete — no billing overages in V1
-8. Licence server: Cloudflare Worker + D1 (separate service, not in this repo)
+8. Licence server: Azure Functions + Table Storage (separate service, not in this repo)
+
+### Per-customer rate limiting
+
+The private `validate_request` enforces two limits before allowing a session to start:
+
+1. **Concurrent session cap** — the licence server tracks how many active sessions a key has open. Default cap: 1 concurrent session (a church only has one service at a time). Attempting to start a second session returns HTTP 429 with `{reason: "concurrent_limit"}`.
+2. **Quota gate** — if the key has zero remaining quota (audio input minutes exhausted for the period), returns HTTP 402 with `{reason: "quota_exhausted"}`. Mid-session exhaustion is still allowed to complete (V1 policy).
+
+The no-op `validate_request` in the public backend always returns unlimited, so self-hosters are unaffected.
+
+Concurrent session tracking requires the licence server to accept a `session_opened` signal at session start and a `session_closed` signal at end — `on_session_end` covers the close; a new `on_session_start` call is added:
+
+```python
+async def on_session_start(ctx: LicenceContext, session_id: str) -> None:
+    """Notifies licence server that a session is now active. No-op in self-hosted."""
+    pass
+```
+
+### Cost attribution
+
+`on_session_end` is the attribution record. The licence server persists:
+
+```
+{licence_key, session_id, started_at, audio_in_sec, audio_out_sec, language_count}
+```
+
+Stored in **Azure Table Storage** (cheap, no schema, natural key-value fit): one table for licence records (key → subscription status, plan limits, period usage) and one for session history. The licence server is an **Azure Functions** HTTP-trigger app in the same resource group as the rest of the infrastructure. The no-op public version logs the values at DEBUG level so self-hosters can verify the hooks fire.
 
 ### What counts as usage
 
@@ -111,15 +142,16 @@ Mac distribution requires an Apple Developer account ($99/year). GitHub Actions 
 | `backend/auth.py` | No-op hook (see above) |
 | `Dockerfile` | Python 3.13 slim, installs requirements, runs uvicorn |
 | `docker-compose.yml` | Single service, reads `.env`, exposes port 8000 |
-| `deploy/azure.bicep` | Provisions Speech S0, Azure OpenAI, Web PubSub Free; outputs keys for `.env` paste |
+| `deploy/azure.bicep` | Provisions Speech S0, Azure OpenAI, Web PubSub Standard S1; outputs keys for `.env` paste |
 
 ### Modified files
 
 | File | Change |
 |------|--------|
 | `backend/main.py` | Register HTTP auth middleware; call `validate_request` at WebSocket upgrade |
-| `backend/session.py` | Accept `LicenceContext`; call `on_session_end` on session close |
-| `operator/app.js` | Read `window.GIBBERLY_API_URL` if present (Electron compatibility shim) |
+| `backend/session.py` | Accept `LicenceContext`; call `on_session_start` after start, `on_session_end` on close |
+| `backend/main.py` | Broadcast `{type: "server_restarting"}` on SIGTERM before shutdown |
+| `operator/app.js` | Read `window.GIBBERLY_API_URL` if present; add `reconnecting` state with exponential backoff |
 | `.env.example` | Inline comments referencing Bicep output field names |
 
 ### Self-hosting story
@@ -142,9 +174,34 @@ The existing `docs/azure-setup.md` remains as the manual fallback.
 
 ---
 
+## Process Reliability
+
+Single-process failure drops all active sessions simultaneously. The fix is two-layered: fast automatic restart + graceful client reconnection, so a crash during a sermon recovers within a few seconds without operator intervention.
+
+**Backend (docker-compose.yml):**
+```yaml
+services:
+  backend:
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+```
+Docker restarts the process immediately on crash. A cold restart takes 2–4 seconds.
+
+**Graceful shutdown (`backend/main.py`):**
+On `SIGTERM`, broadcast `{type: "server_restarting"}` to all active WebSocket sessions before closing. Clients that receive this can show "Reconnecting…" rather than an error.
+
+**Client reconnection (`operator/app.js`):**
+The existing state machine (idle → connecting → live → error) gains a `reconnecting` state. On WebSocket close (whether or not preceded by `server_restarting`), the operator console retries connection with exponential backoff (1s, 2s, 4s, max 10s). On successful reconnect the operator clicks Start again — a new session begins. Listeners auto-reconnect to Web PubSub independently (already handled by the Azure SDK client).
+
+This makes a process crash a ~10 second interruption rather than a manual recovery event. In-memory session state is still lost on restart (Redis deferred to a later milestone).
+
 ## Scalability Note (V1 caveat)
 
-Sessions currently live in FastAPI process memory. For dozens of concurrent organisations this is sufficient. When horizontal scaling is needed, move session state to Redis — `SessionHandler` in `session.py` is already isolated enough for this swap without touching other modules.
+Sessions live in FastAPI process memory. For dozens of concurrent organisations this is sufficient. When horizontal scaling is needed, move session state to Redis — `SessionHandler` in `session.py` is already isolated enough for this swap without touching other modules.
 
 ---
 
@@ -155,4 +212,7 @@ Sessions currently live in FastAPI process memory. For dozens of concurrent orga
 - Electron app opens operator UI, `window.GIBBERLY_API_URL` is set correctly (DevTools console)
 - `X-License-Key` header present on all Electron outbound requests (DevTools Network tab)
 - Self-hosted path: no licence key sent, no-op `validate_request` passes, session starts normally
-- `on_session_end` called when session closes (logged in self-hosted mode)
+- `on_session_start` and `on_session_end` called at session open/close (DEBUG log in self-hosted mode)
+- Killing the backend process mid-session: Electron operator shows "Reconnecting…" and recovers within 10 seconds
+- Second session start with same licence key returns HTTP 429 (paid path only)
+- Azure Table Storage has a usage record after each session completes
