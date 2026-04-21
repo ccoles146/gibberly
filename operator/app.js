@@ -16,6 +16,8 @@
   const pauseBtn       = document.getElementById('pause-btn');
   const debugLinkEl    = document.getElementById('debug-link');
   const sourceLangSelect = document.getElementById('source-lang-select');
+  const audioMeter    = document.getElementById('audio-meter');
+  const audioMeterBar = document.getElementById('audio-meter-bar');
 
   // ── Config ──────────────────────────────────────────────────────────────────
   const backendWs  = window.GIBBERLY_BACKEND;
@@ -46,6 +48,8 @@
     statElapsed.style.display   = s === 'live' ? '' : 'none';
     if (sourceLangSelect) sourceLangSelect.disabled = (s === 'live' || s === 'connecting');
     pauseBtn.style.display = s === 'live' ? '' : 'none';
+    audioMeter.style.display = s === 'live' ? '' : 'none';
+    if (s !== 'live') clearAudioLevel();
     if (s !== 'live') {
       paused = false;
       pauseBtn.textContent = '⏸ Pause';
@@ -162,6 +166,22 @@
   let activeWs        = null;
   let resumeCapture   = null;
   let keepaliveTimer  = null;
+  let levelDecayTimer = null;
+
+  function setAudioLevel(rms) {
+    const visual = Math.min(1, rms * 6);
+    audioMeterBar.style.width = (visual * 100) + '%';
+    if (levelDecayTimer) clearTimeout(levelDecayTimer);
+    levelDecayTimer = setTimeout(() => {
+      audioMeterBar.style.width = '0%';
+      levelDecayTimer = null;
+    }, 150);
+  }
+
+  function clearAudioLevel() {
+    if (levelDecayTimer) { clearTimeout(levelDecayTimer); levelDecayTimer = null; }
+    audioMeterBar.style.width = '0%';
+  }
 
   function startKeepalive() {
     keepaliveTimer = setInterval(() => {
@@ -270,6 +290,7 @@
     ws.onclose = () => {
       activeWs = null;
       stopKeepalive();
+      clearAudioLevel();
       paused = false;
       resumeCapture = null;
       if (state === 'live' || state === 'connecting') setState('idle');
@@ -307,8 +328,12 @@
         });
 
         workletNode.port.onmessage = (e) => {
-          if (activeWsRef.readyState === WebSocket.OPEN && !paused) {
-            activeWsRef.send(e.data);
+          if (e.data instanceof ArrayBuffer) {
+            if (activeWsRef.readyState === WebSocket.OPEN && !paused) {
+              activeWsRef.send(e.data);
+            }
+          } else if (e.data?.type === 'level') {
+            setAudioLevel(e.data.rms);
           }
         };
 
@@ -360,6 +385,12 @@
             return;
           }
           const chunk = pcm.slice(offset, offset + CHUNK);
+          let sumSq = 0;
+          for (let i = 0; i < chunk.length; i++) {
+            const s = chunk[i] / 32768;
+            sumSq += s * s;
+          }
+          setAudioLevel(Math.sqrt(sumSq / chunk.length));
           activeWsRef.send(chunk.buffer);
           offset += CHUNK;
           driveTimer = setTimeout(sendNext, 20);
@@ -373,6 +404,7 @@
 
     stopSession = () => {
       stopKeepalive();
+      clearAudioLevel();
       clearTimeout(driveTimer);
       resumeCapture = null;
       ws.close();

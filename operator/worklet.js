@@ -16,6 +16,8 @@ class GibberlyResampler extends AudioWorkletProcessor {
     this._accumulator = [];   // float samples waiting to be posted
     this._phase = 0;          // fractional position in the input stream
     this._prevSample = 0;     // last sample from previous block (for interpolation)
+    this._levelCounter  = 0;
+    this._levelInterval = 20;
   }
 
   process(inputs) {
@@ -65,6 +67,14 @@ class GibberlyResampler extends AudioWorkletProcessor {
         int16[i] = s < 0 ? s * 32768 : s * 32767;
       }
       this.port.postMessage(int16.buffer, [int16.buffer]);
+    }
+
+    this._levelCounter++;
+    if (this._levelCounter >= this._levelInterval) {
+      this._levelCounter = 0;
+      let sumSq = 0;
+      for (let i = 0; i < mono.length; i++) sumSq += mono[i] * mono[i];
+      this.port.postMessage({ type: 'level', rms: Math.sqrt(sumSq / mono.length) });
     }
 
     return true;  // keep processor alive
