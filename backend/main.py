@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Dict, Optional
@@ -179,9 +180,33 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE"):
     })
 
     try:
-        while True:
-            data = await websocket.receive_bytes()
-            handler.write(data)
+        async with asyncio.timeout(settings.session_timeout_s):
+            while True:
+                data = await websocket.receive()
+                raw_bytes = data.get("bytes")
+                raw_text = data.get("text")
+                if raw_bytes:
+                    if not handler.paused:
+                        handler.write(raw_bytes)
+                elif raw_text:
+                    try:
+                        msg = json.loads(raw_text)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                    else:
+                        if msg.get("type") == "pause":
+                            await handler.pause()
+                        elif msg.get("type") == "resume":
+                            await handler.resume()
+    except asyncio.TimeoutError:
+        log.warning(
+            "Session %s timed out after %ds",
+            handler.session_id, settings.session_timeout_s,
+        )
+        try:
+            await websocket.close(code=1001)
+        except Exception:
+            pass
     except WebSocketDisconnect:
         log.info("Session %s — operator disconnected", handler.session_id)
     except Exception as exc:
