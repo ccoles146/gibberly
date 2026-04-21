@@ -45,6 +45,7 @@ class SessionHandler:
 
         self.listener_count: dict[str, int] = {}
         self.audio_active_count: dict[str, int] = {}
+        self.paused: bool = False
 
         self._publisher = PubSubPublisher(pubsub_cs)
 
@@ -81,6 +82,8 @@ class SessionHandler:
         )
 
     async def _process_chunk(self, raw_src: str) -> None:
+        if self.paused:
+            return
         try:
             result = await self._llm_translator.translate(raw_src)
             clean_src = result["clean_src"]
@@ -132,6 +135,24 @@ class SessionHandler:
                 await self._on_status(msg)
             except Exception:
                 pass
+
+    async def pause(self) -> None:
+        self.paused = True
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._stt.pause_recognition)
+        await loop.run_in_executor(
+            None, lambda: self._publisher.broadcast_event(self.session_id, {"type": "paused"})
+        )
+        await self._send_status({"type": "paused"})
+
+    async def resume(self) -> None:
+        self.paused = False
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._stt.resume_recognition)
+        await loop.run_in_executor(
+            None, lambda: self._publisher.broadcast_event(self.session_id, {"type": "resumed"})
+        )
+        await self._send_status({"type": "resumed"})
 
     def listener_join(self, lang: str) -> int:
         self.listener_count[lang] = self.listener_count.get(lang, 0) + 1

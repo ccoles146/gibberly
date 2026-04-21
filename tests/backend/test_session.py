@@ -271,3 +271,86 @@ def test_audio_join_leave_updates_audio_active_count(mock_pub_class, mock_stt_cl
     handler.audio_leave("en")  # extra leave — should not go negative
     assert handler.audio_active_count["en"] == 0
     loop.close()
+
+
+@patch("backend.session.TTSSynthesizer")
+@patch("backend.session.LLMTranslator")
+@patch("backend.session.STTSession")
+@patch("backend.session.PubSubPublisher")
+def test_pause_sets_paused_flag_and_broadcasts(mock_pub_class, mock_stt_class, mock_llm_class, mock_tts_class):
+    mock_pub = MagicMock()
+    mock_pub_class.return_value = mock_pub
+    mock_pub.get_listener_token.return_value = "tok"
+    mock_stt = MagicMock()
+    mock_stt_class.return_value = mock_stt
+    mock_llm_class.return_value = MagicMock()
+    mock_tts_class.return_value = MagicMock()
+
+    statuses = []
+    loop = asyncio.new_event_loop()
+
+    async def capture_status(msg):
+        statuses.append(msg)
+
+    handler = _make_handler(loop, on_status=capture_status)
+    loop.run_until_complete(handler.pause())
+
+    assert handler.paused is True
+    mock_stt.pause_recognition.assert_called_once()
+    mock_pub.broadcast_event.assert_called_once_with(handler.session_id, {"type": "paused"})
+    assert any(m.get("type") == "paused" for m in statuses)
+    loop.close()
+
+
+@patch("backend.session.TTSSynthesizer")
+@patch("backend.session.LLMTranslator")
+@patch("backend.session.STTSession")
+@patch("backend.session.PubSubPublisher")
+def test_resume_clears_paused_flag_and_broadcasts(mock_pub_class, mock_stt_class, mock_llm_class, mock_tts_class):
+    mock_pub = MagicMock()
+    mock_pub_class.return_value = mock_pub
+    mock_pub.get_listener_token.return_value = "tok"
+    mock_stt = MagicMock()
+    mock_stt_class.return_value = mock_stt
+    mock_llm_class.return_value = MagicMock()
+    mock_tts_class.return_value = MagicMock()
+
+    statuses = []
+    loop = asyncio.new_event_loop()
+
+    async def capture_status(msg):
+        statuses.append(msg)
+
+    handler = _make_handler(loop, on_status=capture_status)
+    handler.paused = True
+    loop.run_until_complete(handler.resume())
+
+    assert handler.paused is False
+    mock_stt.resume_recognition.assert_called_once()
+    mock_pub.broadcast_event.assert_called_once_with(handler.session_id, {"type": "resumed"})
+    assert any(m.get("type") == "resumed" for m in statuses)
+    loop.close()
+
+
+@patch("backend.session.TTSSynthesizer")
+@patch("backend.session.LLMTranslator")
+@patch("backend.session.STTSession")
+@patch("backend.session.PubSubPublisher")
+def test_process_chunk_dropped_when_paused(mock_pub_class, mock_stt_class, mock_llm_class, mock_tts_class):
+    mock_pub = MagicMock()
+    mock_pub_class.return_value = mock_pub
+    mock_pub.get_listener_token.return_value = "tok"
+    mock_stt_class.return_value = MagicMock()
+    mock_llm = MagicMock()
+    mock_llm_class.return_value = mock_llm
+    mock_llm.translate = AsyncMock(return_value={"clean_src": "Gut", "en_text": "Good"})
+    mock_tts_class.return_value = MagicMock()
+
+    loop = asyncio.new_event_loop()
+    handler = _make_handler(loop)
+    handler.paused = True
+    loop.run_until_complete(handler._process_chunk("Gut"))
+
+    mock_llm.translate.assert_not_called()
+    mock_pub.publish_phrase.assert_not_called()
+    loop.close()
