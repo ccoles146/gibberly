@@ -17,9 +17,8 @@ env_file = pathlib.Path(__file__).parent.parent / ".env"
 if env_file.exists():
     for line in env_file.read_text().splitlines():
         line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, _, val = line.partition("=")
-            os.environ.setdefault(key.strip(), val.strip())
+        if line and not line.startswith("#") and line.startswith("OPERATOR_PORT="):
+            os.environ.setdefault("OPERATOR_PORT", line.partition("=")[2].strip())
 
 port = int(os.environ.get("OPERATOR_PORT", "9000"))
 

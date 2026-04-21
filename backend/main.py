@@ -198,6 +198,9 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE"):
                             await handler.pause()
                         elif msg.get("type") == "resume":
                             await handler.resume()
+                        # keepalive and unknown types are silently accepted to prevent timeout
+                        else:
+                            log.debug("Session %s — unrecognised WS message type: %s", handler.session_id, msg.get("type"))
     except asyncio.TimeoutError:
         log.warning(
             "Session %s timed out after %ds",

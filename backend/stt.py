@@ -100,7 +100,7 @@ class STTSession:
         with self._lock:
             full_interim = self._interim_text
             already_sent = self._total_dispatched
-            new_part = full_interim[len(already_sent):].strip()
+            new_part = self._tail_after_dispatched(full_interim, already_sent)
             if new_part:
                 self._total_dispatched = full_interim
             self._cap_timer = None

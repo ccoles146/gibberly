@@ -306,7 +306,7 @@
     const deviceId    = deviceSelect.value;
     const channelMode = channelSelect.value || 'left';
     let audioCtx, workletNode, stream;
-    resumeCapture = null;
+    resumeCapture = null;  // device mode resumes automatically via paused flag; only file mode needs this
 
     const ws = openWebSocket(async (activeWsRef) => {
       try {
