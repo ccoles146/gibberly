@@ -369,3 +369,44 @@ def test_stt_defaults_to_german(mock_stream, mock_audio_cfg, mock_recognizer, mo
     STTSession("key", "region", on_text=lambda t: None)
 
     assert mock_config_instance.speech_recognition_language == "de-DE"
+
+
+@patch("backend.stt.speechsdk.SpeechRecognizer")
+@patch("backend.stt.speechsdk.audio.AudioConfig")
+@patch("backend.stt.speechsdk.audio.PushAudioInputStream")
+@patch("backend.stt.speechsdk.SpeechConfig")
+def test_pause_recognition_stops_recognizer_without_closing_stream(
+    mock_config_class, mock_stream_class, mock_audio_config, mock_recognizer_class
+):
+    mock_stream = MagicMock()
+    mock_stream_class.return_value = mock_stream
+    mock_recognizer = MagicMock()
+    mock_recognizer_class.return_value = mock_recognizer
+
+    from backend.stt import STTSession
+    session = STTSession(speech_key="k", speech_region="r", on_text=lambda t: None)
+    session.pause_recognition()
+
+    mock_recognizer.stop_continuous_recognition_async.assert_called_once()
+    mock_recognizer.stop_continuous_recognition_async.return_value.get.assert_called_once()
+    mock_stream.close.assert_not_called()
+
+
+@patch("backend.stt.speechsdk.SpeechRecognizer")
+@patch("backend.stt.speechsdk.audio.AudioConfig")
+@patch("backend.stt.speechsdk.audio.PushAudioInputStream")
+@patch("backend.stt.speechsdk.SpeechConfig")
+def test_resume_recognition_starts_recognizer(
+    mock_config_class, mock_stream_class, mock_audio_config, mock_recognizer_class
+):
+    mock_stream = MagicMock()
+    mock_stream_class.return_value = mock_stream
+    mock_recognizer = MagicMock()
+    mock_recognizer_class.return_value = mock_recognizer
+
+    from backend.stt import STTSession
+    session = STTSession(speech_key="k", speech_region="r", on_text=lambda t: None)
+    session.resume_recognition()
+
+    mock_recognizer.start_continuous_recognition.assert_called_once()
+    mock_stream.close.assert_not_called()

@@ -140,3 +140,21 @@ class STTSession:
         except Exception:
             pass
         self._push_stream.close()
+
+    def pause_recognition(self) -> None:
+        with self._lock:
+            if self._cap_timer is not None:
+                self._cap_timer.cancel()
+                self._cap_timer = None
+            self._interim_text = ""
+            self._total_dispatched = ""
+        try:
+            self._recognizer.stop_continuous_recognition_async().get()
+        except Exception:
+            pass
+
+    def resume_recognition(self) -> None:
+        with self._lock:
+            self._interim_text = ""
+            self._total_dispatched = ""
+        self._recognizer.start_continuous_recognition()
