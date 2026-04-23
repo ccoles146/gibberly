@@ -179,28 +179,43 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE"):
         ),
     })
 
-    try:
-        async with asyncio.timeout(settings.session_timeout_s):
-            while True:
-                data = await websocket.receive()
-                raw_bytes = data.get("bytes")
-                raw_text = data.get("text")
-                if raw_bytes:
-                    if not handler.paused:
-                        handler.write(raw_bytes)
-                elif raw_text:
+    async def _keepalive() -> None:
+        """Sends periodic pings from server → operator to prevent Azure infra idle-close."""
+        while True:
+            await asyncio.sleep(20)
+            try:
+                await websocket.send_json({"type": "ping"})
+            except Exception:
+                return
+
+    keepalive_task = asyncio.create_task(_keepalive())
+
+    async def _receive_loop() -> None:
+        while True:
+            data = await websocket.receive()
+            raw_bytes = data.get("bytes")
+            raw_text = data.get("text")
+            if raw_bytes:
+                if not handler.paused:
                     try:
-                        msg = json.loads(raw_text)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+                        handler.write(raw_bytes)
+                    except Exception as exc:
+                        log.warning("Session %s — audio write failed (ignored): %s", handler.session_id, exc)
+            elif raw_text:
+                try:
+                    msg = json.loads(raw_text)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                else:
+                    if msg.get("type") == "pause":
+                        await handler.pause()
+                    elif msg.get("type") == "resume":
+                        await handler.resume()
                     else:
-                        if msg.get("type") == "pause":
-                            await handler.pause()
-                        elif msg.get("type") == "resume":
-                            await handler.resume()
-                        # keepalive and unknown types are silently accepted to prevent timeout
-                        else:
-                            log.debug("Session %s — unrecognised WS message type: %s", handler.session_id, msg.get("type"))
+                        log.debug("Session %s — unrecognised WS message type: %s", handler.session_id, msg.get("type"))
+
+    try:
+        await asyncio.wait_for(_receive_loop(), timeout=settings.session_timeout_s)
     except asyncio.TimeoutError:
         log.warning(
             "Session %s timed out after %ds",
@@ -215,6 +230,7 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE"):
     except Exception as exc:
         log.error("Session %s — unexpected error: %s", handler.session_id, exc)
     finally:
+        keepalive_task.cancel()
         app.state.sessions.pop(handler.session_id, None)
         if app.state.current_session_id == handler.session_id:
             app.state.current_session_id = None

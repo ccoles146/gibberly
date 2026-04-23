@@ -35,7 +35,12 @@
   })();
 
   // ── State machine ──────────────────────────────────────────────────────────
-  let state = 'idle';
+  let state           = 'idle';
+  let levelDecayTimer = null;   // declared early — clearAudioLevel() called by setState('idle') below
+  let paused          = false;  // declared early — setState('idle') resets this
+  let activeWs        = null;
+  let resumeCapture   = null;
+  let keepaliveTimer  = null;
 
   function setState(s, msg) {
     state = s;
@@ -162,11 +167,6 @@
   }
 
   // ── Pause / keepalive ──────────────────────────────────────────────────────
-  let paused          = false;
-  let activeWs        = null;
-  let resumeCapture   = null;
-  let keepaliveTimer  = null;
-  let levelDecayTimer = null;
 
   function setAudioLevel(rms) {
     const visual = Math.min(1, rms * 6);

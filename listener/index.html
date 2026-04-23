@@ -2,138 +2,496 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Gibberly — Live Translation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #090c14;
+      --bg-surface:  #111826;
+      --bg-card:     #161f31;
+      --border:      #1e2c44;
+      --border-mid:  #243452;
+      --text:        #ede8df;
+      --text-soft:   #8898b0;
+      --text-dim:    #38495e;
+      --amber:       #e89a0e;
+      --amber-glow:  rgba(232, 154, 14, 0.10);
+      --teal:        #00c896;
+      --teal-glow:   rgba(0, 200, 150, 0.14);
+      --teal-bright: #00dfaa;
+      --green:       #4ade80;
+      --red:         #e85454;
+      --orange:      #f59e0b;
+      --r:           14px;
+      --r-sm:        9px;
+      --serif:       'Cormorant Garamond', Georgia, serif;
+      --ui:          'Manrope', system-ui, sans-serif;
+    }
+
+    html { height: 100%; background: var(--bg); }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f0f; color: #f0f0f0;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      min-height: 100vh; padding: 2rem;
-      gap: 1rem;
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--ui);
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
     }
-    h1 { font-size: 1.4rem; }
-    #status { font-size: 0.9rem; color: #888; }
-    #lang-row {
-      display: flex; align-items: center; gap: 0.75rem;
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 35% at 50% 0%,   rgba(232,154,14,0.055) 0%, transparent 100%),
+        radial-gradient(ellipse 60% 25% at 50% 108%,  rgba(0,200,150,0.04)  0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
     }
+
+    /* ── HEADER ──────────────────────────────────────────────────────── */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      height: 56px;
+      padding: 0 16px;
+      background: rgba(9, 12, 20, 0.92);
+      backdrop-filter: blur(20px) saturate(1.5);
+      -webkit-backdrop-filter: blur(20px) saturate(1.5);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-shrink: 0;
+    }
+
+    .brand-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: var(--amber-glow);
+      border: 1px solid rgba(232, 154, 14, 0.28);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .brand-name {
+      font-family: var(--serif);
+      font-size: 21px;
+      font-weight: 400;
+      letter-spacing: 0.03em;
+      color: var(--amber);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     #lang-select {
-      background: #1e1e1e; color: #f0f0f0;
-      border: 1px solid #444; border-radius: 0.5rem;
-      padding: 0.5rem 0.75rem; font-size: 0.9rem; cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--bg-card);
+      border: 1px solid var(--border-mid);
+      color: var(--text);
+      font-family: var(--ui);
+      font-size: 13px;
+      padding: 7px 12px 7px 10px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
     }
-    #lang-select:disabled { opacity: 0.5; cursor: default; }
+    #lang-select:focus { border-color: var(--amber); }
+    #lang-select:disabled { opacity: 0.4; cursor: default; }
+
     #connect-btn {
-      padding: 1rem 2.5rem; font-size: 1.1rem;
-      background: #2563eb; color: #fff;
-      border: none; border-radius: 2rem; cursor: pointer;
+      background: transparent;
+      border: 1px solid var(--border-mid);
+      color: var(--text-soft);
+      font-family: var(--ui);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 7px 15px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      letter-spacing: 0.01em;
     }
-    #connect-btn:disabled { background: #444; cursor: default; }
-    #connect-btn.stop { background: #dc2626; }
-    #audio-btn {
-      padding: 0.6rem 1.5rem; font-size: 0.9rem;
-      background: #1e1e1e; color: #f0f0f0;
-      border: 1px solid #444; border-radius: 1.5rem; cursor: pointer;
-      display: none;
+    #connect-btn:hover              { border-color: var(--amber); color: var(--amber); }
+    #connect-btn.stop               { border-color: rgba(232,84,84,0.5); color: var(--red); }
+    #connect-btn.stop:hover         { background: rgba(232,84,84,0.08); border-color: var(--red); }
+    #connect-btn:disabled           { opacity: 0.35; cursor: default; }
+
+    /* ── STATUS ──────────────────────────────────────────────────────── */
+    #status {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-soft);
+      letter-spacing: 0.025em;
+      padding: 9px 20px;
+      min-height: 32px;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
     }
-    #audio-btn.active { background: #065f46; border-color: #059669; color: #d1fae5; }
-    #reading-pane-wrapper {
-      width: 100%; max-width: 480px;
-      display: flex; flex-direction: column;
-      align-items: center; gap: 0.4rem;
-      min-height: 4rem;
+
+    /* ── PAUSED ───────────────────────────────────────────────────────── */
+    .paused-row {
+      display: flex;
+      justify-content: center;
+      min-height: 22px;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
     }
+
     #paused-pill {
       display: none;
-      background: #374151; color: #9ca3af;
-      border-radius: 1rem; padding: 0.2rem 0.75rem;
-      font-size: 0.8rem;
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: var(--orange);
+      border-radius: 999px;
+      padding: 3px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
     }
+
+    /* ── MAIN READING STAGE ──────────────────────────────────────────── */
+    .translation-stage {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    #reading-pane-wrapper {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 22px 16px;
+    }
+
     #reading-pane {
-      font-size: 1.15rem; color: #f0f0f0;
-      line-height: 1.7; text-align: center;
-      min-height: 2.5rem; word-break: break-word;
-    }
-    #speed-row {
-      display: none;
-      width: 100%; max-width: 480px;
+      width: 100%;
+      max-width: 520px;
+      font-family: var(--serif);
+      font-size: clamp(28px, 7.5vw, 44px);
+      font-weight: 300;
+      font-style: italic;
+      line-height: 1.52;
+      color: var(--text);
       text-align: center;
+      letter-spacing: 0.01em;
+      min-height: 100px;
     }
-    #speed-row label { font-size: 0.8rem; color: #6b7280; }
-    #speed-slider { width: 60%; margin-top: 0.25rem; cursor: pointer; }
-    #debug { font-size: 0.75rem; color: #555; text-align: center; font-family: monospace; }
-    #mute-warning {
-      display: none;
-      background: #78350f; color: #fef3c7;
-      border: 1px solid #b45309; border-radius: 0.75rem;
-      padding: 0.9rem 1.2rem; font-size: 0.9rem; text-align: center;
-      max-width: 320px;
+
+    #reading-pane:empty::before {
+      content: 'Waiting for translation\2026';
+      font-size: 0.6em;
+      color: var(--text-dim);
     }
-    #transcript-section {
-      width: 100%; max-width: 480px;
-      background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 0.75rem;
-      padding: 0.75rem 1rem;
+
+    /* ── SPEED ROW ───────────────────────────────────────────────────── */
+    #speed-row {
+      display: none; /* JS sets to '' when connected */
+      align-items: center;
+      gap: 12px;
+      padding: 6px 22px 2px;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
     }
-    #transcript-section summary {
-      cursor: pointer; color: #6b7280; font-size: 0.85rem;
-      user-select: none; list-style: none; display: flex;
-      justify-content: space-between; align-items: center;
+
+    .speed-text {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      flex-shrink: 0;
     }
-    #transcript-section summary::-webkit-details-marker { display: none; }
+
+    #speed-slider {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 2px;
+      background: var(--border);
+      border-radius: 1px;
+      outline: none;
+      cursor: pointer;
+    }
+    #speed-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--amber);
+      border: 2.5px solid var(--bg);
+      box-shadow: 0 0 0 1px var(--amber);
+      cursor: pointer;
+    }
+    #speed-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--amber);
+      border: 2.5px solid var(--bg);
+      cursor: pointer;
+    }
+
+    #speed-label {
+      font-size: 11px;
+      color: var(--text-soft);
+      font-variant-numeric: tabular-nums;
+      min-width: 32px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ── TRANSCRIPT PANEL ────────────────────────────────────────────── */
+    .transcript-panel {
+      flex-shrink: 0;
+      max-height: 26vh;
+      overflow-y: auto;
+      border-top: 1px solid var(--border);
+      position: relative;
+      z-index: 1;
+    }
+
+    .transcript-panel::-webkit-scrollbar { width: 3px; }
+    .transcript-panel::-webkit-scrollbar-track { background: transparent; }
+    .transcript-panel::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
+
+    .transcript-hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 22px 4px;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .transcript-hdr-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    .transcript-hdr-count {
+      font-size: 10px;
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+    }
+
     #transcript-list {
-      margin-top: 0.75rem; max-height: 40vh; overflow-y: auto;
-      display: flex; flex-direction: column; gap: 0.4rem;
+      padding: 8px 22px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
     }
+
     .transcript-phrase {
-      font-size: 0.9rem; color: #e2e8f0; line-height: 1.4;
-      padding: 0.3rem 0; border-bottom: 1px solid #2a2a2a;
+      font-family: var(--serif);
+      font-size: clamp(14px, 3.8vw, 18px);
+      color: var(--text-soft);
+      line-height: 1.5;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
     }
     .transcript-phrase:last-child { border-bottom: none; }
-    #dl-transcript {
-      margin-top: 0.75rem; padding: 0.4rem 1rem;
-      background: #065f46; color: #d1fae5;
-      border: none; border-radius: 0.4rem; cursor: pointer;
-      font-size: 0.8rem; font-family: inherit;
+
+    /* ── MUTE WARNING ─────────────────────────────────────────────────── */
+    #mute-warning {
+      display: none;
+      flex-shrink: 0;
+      margin: 8px 16px;
+      padding: 10px 14px;
+      background: rgba(245, 158, 11, 0.07);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      color: #c07a0e;
+      border-radius: var(--r-sm);
+      font-size: 12px;
+      line-height: 1.5;
+      text-align: center;
+      position: relative;
+      z-index: 1;
     }
-    #dl-transcript:disabled { opacity: 0.4; cursor: default; }
+
+    /* Debug hidden */
+    #debug { display: none; }
+
+    /* ── BOTTOM NAV BAR ──────────────────────────────────────────────── */
+    .bottom-bar {
+      position: sticky;
+      bottom: 0;
+      z-index: 200;
+      flex-shrink: 0;
+      background: rgba(9, 12, 20, 0.96);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #audio-btn {
+      display: none; /* JS sets to 'block' when connected */
+      flex: 1;
+      padding: 15px 24px;
+      background: var(--bg-card);
+      border: 1.5px solid var(--border-mid);
+      color: var(--text-soft);
+      font-family: var(--ui);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.015em;
+      border-radius: var(--r);
+      cursor: pointer;
+      transition: all 0.25s;
+      text-align: center;
+    }
+    #audio-btn:hover {
+      border-color: var(--teal);
+      color: var(--teal);
+    }
+    #audio-btn.active {
+      background: var(--teal-glow);
+      border-color: var(--teal);
+      color: var(--teal-bright);
+      box-shadow: 0 0 28px rgba(0,200,150,0.16), inset 0 0 24px rgba(0,200,150,0.04);
+    }
+
+    #dl-transcript {
+      flex-shrink: 0;
+      width: 50px;
+      height: 50px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      font-size: 0;
+    }
+    #dl-transcript svg { pointer-events: none; }
+    #dl-transcript:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
+    #dl-transcript:disabled { opacity: 0.3; cursor: default; }
+
+    /* ── RESPONSIVE ──────────────────────────────────────────────────── */
+    @media (min-width: 540px) {
+      #reading-pane-wrapper { padding: 36px 44px 20px; }
+      #speed-row { padding: 10px 32px 4px; }
+      .transcript-hdr { padding: 8px 32px 4px; }
+      #transcript-list { padding: 8px 32px 14px; }
+    }
+
+    @media (min-width: 768px) {
+      #reading-pane-wrapper { padding: 56px 18% 28px; }
+      #speed-row { padding: 12px 18% 6px; }
+      .transcript-hdr { padding: 10px 18% 6px; }
+      #transcript-list { padding: 10px 18% 20px; }
+    }
   </style>
 </head>
 <body>
-  <h1>Live Translation</h1>
-  <p id="status">Choose language and connect</p>
 
-  <div id="lang-row">
-    <select id="lang-select"><option value="">Loading…</option></select>
-  </div>
+  <!-- HEADER -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-icon">🎙</div>
+      <span class="brand-name">Gibberly</span>
+    </div>
+    <div class="header-right">
+      <select id="lang-select"><option value="">Loading…</option></select>
+      <button id="connect-btn">Connect</button>
+    </div>
+  </header>
 
-  <button id="connect-btn">Connect</button>
-  <button id="audio-btn">&#x1F50A; Unmute audio</button>
+  <!-- STATUS -->
+  <p id="status">Choose a language and connect</p>
 
-  <div id="reading-pane-wrapper">
-    <div id="paused-pill">⏸ Paused</div>
-    <p id="reading-pane"></p>
-  </div>
+  <!-- MAIN -->
+  <main class="translation-stage">
+    <div class="paused-row">
+      <div id="paused-pill">⏸ Paused</div>
+    </div>
+    <div id="reading-pane-wrapper">
+      <div id="reading-pane"></div>
+    </div>
+  </main>
 
+  <!-- SPEED -->
   <div id="speed-row">
-    <label for="speed-slider">Speed: <span id="speed-label">1.0×</span></label><br>
+    <span class="speed-text">Speed</span>
     <input type="range" id="speed-slider" min="0.5" max="1.5" step="0.25" value="1.0">
+    <span id="speed-label">1.0×</span>
   </div>
 
+  <!-- TRANSCRIPT -->
+  <section class="transcript-panel">
+    <div class="transcript-hdr">
+      <span class="transcript-hdr-label">Transcript</span>
+      <span class="transcript-hdr-count"><span id="transcript-count">0</span> phrases</span>
+    </div>
+    <div id="transcript-list"></div>
+  </section>
+
+  <!-- iOS MUTE WARNING -->
   <div id="mute-warning">
-    &#x1F514; <strong>No sound?</strong> Check the silent switch on the left side of your iPhone — if it shows orange, flip it up.
+    🔔 <strong>No sound?</strong> Check the silent switch on the left side of your iPhone — if it shows orange, flip it up.
   </div>
+
   <p id="debug"></p>
 
-  <details id="transcript-section">
-    <summary>
-      <span>Transcript (<span id="transcript-count">0</span> phrases)</span>
-      <span style="font-size:0.75rem; color:#4b5563;">tap to expand</span>
-    </summary>
-    <div id="transcript-list"></div>
-    <button id="dl-transcript" disabled>Download Transcript</button>
-  </details>
+  <!-- BOTTOM BAR -->
+  <nav class="bottom-bar">
+    <button id="audio-btn">🔊 Enable audio</button>
+    <button id="dl-transcript" disabled title="Download transcript">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M9 2v9M5 8l4 4 4-4M2.5 13.5h13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </nav>
 
   <script src="app.js"></script>
 </body>

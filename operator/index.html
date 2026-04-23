@@ -4,149 +4,562 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gibberly — Operator Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --bg:          #080b12;
+      --bg-mid:      #0e1422;
+      --bg-surface:  #111826;
+      --bg-card:     #161f31;
+      --bg-hover:    #1a2640;
+      --border:      #1e2c44;
+      --border-mid:  #243452;
+      --text:        #ede8df;
+      --text-soft:   #8898b0;
+      --text-dim:    #38495e;
+      --amber:       #e89a0e;
+      --amber-glow:  rgba(232, 154, 14, 0.10);
+      --amber-dim:   rgba(232, 154, 14, 0.06);
+      --teal:        #00c896;
+      --teal-glow:   rgba(0, 200, 150, 0.12);
+      --green:       #4ade80;
+      --green-glow:  rgba(74, 222, 128, 0.10);
+      --red:         #e85454;
+      --orange:      #f59e0b;
+      --r:           12px;
+      --r-sm:        8px;
+      --r-xs:        6px;
+      --serif:       'Cormorant Garamond', Georgia, serif;
+      --ui:          'Manrope', system-ui, sans-serif;
+      --mono:        'JetBrains Mono', 'Courier New', monospace;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--ui);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #111; color: #f0f0f0;
-      min-height: 100vh;
-      display: flex; flex-direction: column; align-items: center;
-      padding: 1.5rem 1rem;
-      gap: 1.5rem;
+      display: flex;
+      flex-direction: column;
     }
 
-    /* Status bar */
-    #status-bar {
-      width: 100%; max-width: 480px;
-      display: flex; align-items: center; gap: 1rem;
-      background: #1e1e1e; border-radius: 0.75rem;
-      padding: 0.75rem 1.25rem;
-      font-size: 0.9rem;
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 30% at 50% 0%,   rgba(232,154,14,0.04) 0%, transparent 100%),
+        radial-gradient(ellipse 50% 25% at 50% 110%,  rgba(0,200,150,0.03) 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
     }
+
+    /* ── STATUS BAR ──────────────────────────────────────────────────── */
+    .op-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      height: 48px;
+      padding: 0 20px;
+      background: rgba(8, 11, 18, 0.95);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      position: relative;
+      z-index: 100;
+    }
+
+    .op-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     #status-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: #555; flex-shrink: 0;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      transition: background 0.3s;
+      flex-shrink: 0;
     }
-    #status-dot.live { background: #22c55e; }
-    #status-dot.connecting { background: #f59e0b; }
-    #status-dot.error { background: #ef4444; }
-    #status-text { flex: 1; color: #aaa; }
-    #stat-listeners { color: #f0f0f0; }
-    #stat-elapsed  { color: #f0f0f0; font-variant-numeric: tabular-nums; }
+    #status-dot.live        { background: var(--green); box-shadow: 0 0 8px rgba(74,222,128,0.5); animation: pulse-dot 2s ease-in-out infinite; }
+    #status-dot.connecting  { background: var(--orange); animation: pulse-dot 1s ease-in-out infinite; }
+    #status-dot.error       { background: var(--red); }
 
-    /* QR section */
-    #qr-section {
-      width: 100%; max-width: 480px;
-      background: #1e1e1e; border-radius: 0.75rem;
-      padding: 1.5rem; text-align: center;
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
     }
-    #qr-canvas { margin: 0 auto 1rem; }
-    #qr-canvas table { margin: 0 auto; }
+
+    #status-text {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      min-width: 90px;
+    }
+
+    .header-brand {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+    }
+
+    .brand-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      background: var(--amber-glow);
+      border: 1px solid rgba(232,154,14,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    .brand-name {
+      font-family: var(--serif);
+      font-size: 18px;
+      font-weight: 400;
+      letter-spacing: 0.03em;
+      color: var(--amber);
+    }
+
+    .brand-sub {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    #stat-listeners,
+    #stat-elapsed {
+      font-size: 12px;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-soft);
+    }
+
+    #stat-listeners { display: none; }
+    #stat-elapsed   { display: none; }
+
+    #listener-count,
+    #elapsed {
+      color: var(--text);
+    }
+
+    /* ── MAIN GRID ───────────────────────────────────────────────────── */
+    .op-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 220px 1fr 230px;
+      grid-template-rows: 1fr;
+      gap: 0;
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── SESSION PANEL (left) ─────────────────────────────────────────── */
+    .session-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 16px;
+      border-right: 1px solid var(--border);
+      gap: 12px;
+      overflow: hidden;
+    }
+
+    .qr-wrap {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    #qr-canvas table {
+      margin: 0 auto;
+      border-collapse: collapse;
+    }
+
+    .session-info {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
     #live-url {
-      font-size: 0.8rem; color: #60a5fa;
-      word-break: break-all; text-decoration: none;
+      display: block;
+      font-size: 10px;
+      font-family: var(--mono);
+      color: var(--teal);
+      word-break: break-all;
+      text-decoration: none;
+      line-height: 1.4;
+      opacity: 0.8;
+      transition: opacity 0.2s;
     }
-    #live-url:hover { text-decoration: underline; }
+    #live-url:hover { opacity: 1; }
+    #live-url:empty { display: none; }
 
-    /* Phrase */
+    #debug-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-dim);
+      text-decoration: none;
+      transition: color 0.2s;
+      letter-spacing: 0.02em;
+    }
+    #debug-link:hover { color: var(--text-soft); }
+    #debug-link::after { content: ' →'; }
+
+    /* ── PHRASE PANEL (center) ───────────────────────────────────────── */
+    .phrase-panel {
+      display: flex;
+      flex-direction: column;
+      padding: 24px 28px;
+      overflow: hidden;
+    }
+
+    .panel-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+      flex-shrink: 0;
+    }
+
     #last-phrase {
-      width: 100%; max-width: 480px;
-      min-height: 3rem;
-      font-size: 1rem; color: #d1d5db;
-      font-style: italic; text-align: center;
-      padding: 0 0.5rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      overflow: hidden;
     }
 
-    /* Controls */
-    #controls {
-      width: 100%; max-width: 480px;
-      display: flex; gap: 0.75rem; align-items: center;
-      flex-wrap: wrap;
+    /* The JS generates <div>label: text</div> for each part */
+    #last-phrase div {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.5;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
+
+    /* Last div = English translation — make it prominent */
+    #last-phrase div:last-child {
+      font-family: var(--serif);
+      font-size: clamp(18px, 2.2vw, 26px);
+      font-style: italic;
+      font-weight: 300;
+      color: var(--text);
+      white-space: normal;
+      margin-top: 8px;
+      line-height: 1.45;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+
+    /* If only one div (text set before session), show it normally */
+    #last-phrase div:only-child {
+      font-family: var(--serif);
+      font-size: clamp(16px, 2vw, 22px);
+      font-style: italic;
+      font-weight: 300;
+      color: var(--text-soft);
+      white-space: normal;
+      border-top: none;
+      padding-top: 0;
+      margin-top: 0;
+    }
+
+    #last-phrase:empty::before {
+      content: 'Translation output will appear here\2026';
+      font-style: italic;
+      color: var(--text-dim);
+      font-family: var(--serif);
+      font-size: 18px;
+    }
+
+    /* ── CONTROLS PANEL (right) ──────────────────────────────────────── */
+    .controls-panel {
+      display: flex;
+      flex-direction: column;
+      padding: 20px 16px;
+      border-left: 1px solid var(--border);
+      gap: 16px;
+      overflow-y: auto;
+    }
+
+    .controls-panel::-webkit-scrollbar { width: 3px; }
+    .controls-panel::-webkit-scrollbar-track { background: transparent; }
+    .controls-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .ctrl-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
     select {
-      flex: 1; min-width: 0;
-      background: #2a2a2a; color: #f0f0f0;
-      border: 1px solid #444; border-radius: 0.5rem;
-      padding: 0.6rem 0.75rem; font-size: 0.9rem;
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-mid);
+      color: var(--text);
+      font-family: var(--ui);
+      font-size: 13px;
+      font-weight: 400;
+      padding: 8px 12px;
+      border-radius: var(--r-sm);
       cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2338495e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
     }
-    #channel-select { max-width: 100px; flex: none; }
-    #source-lang-select { flex: none; max-width: 160px; }
+    select:focus { border-color: var(--amber); }
+    select:disabled { opacity: 0.4; cursor: default; }
+
+    /* Channel group — hidden via :has() when channel-select is hidden by JS */
+    .channel-group:has(#channel-select[style*="none"]) { display: none; }
+
+    /* Audio level meter */
+    .meter-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    #audio-meter {
+      /* JS shows/hides this */
+      height: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    #audio-meter-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--teal) 0%, #00ffb2 100%);
+      border-radius: 4px;
+      transition: width 0.06s ease-out;
+    }
+
+    /* ── FOOTER / ACTIONS ────────────────────────────────────────────── */
+    .op-footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      height: 72px;
+      padding: 0 24px;
+      background: rgba(8, 11, 18, 0.95);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      position: relative;
+      z-index: 100;
+    }
+
     #file-input { display: none; }
 
     #action-btn {
-      flex: none;
-      padding: 0.6rem 1.5rem;
-      background: #2563eb; color: #fff;
-      border: none; border-radius: 0.5rem;
-      font-size: 0.95rem; cursor: pointer;
-      transition: background 0.15s;
+      padding: 12px 40px;
+      background: var(--amber-glow);
+      border: 1.5px solid rgba(232,154,14,0.4);
+      color: var(--amber);
+      font-family: var(--ui);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border-radius: var(--r);
+      cursor: pointer;
+      transition: all 0.2s;
     }
-    #action-btn:hover:not(:disabled) { background: #1d4ed8; }
-    #action-btn:disabled { background: #444; cursor: default; }
-    #action-btn.stop { background: #dc2626; }
-    #action-btn.stop:hover:not(:disabled) { background: #b91c1c; }
+    #action-btn:hover:not(:disabled) {
+      background: rgba(232,154,14,0.18);
+      border-color: var(--amber);
+      box-shadow: 0 0 20px rgba(232,154,14,0.15);
+    }
+    #action-btn:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+    #action-btn.stop {
+      background: rgba(232,84,84,0.1);
+      border-color: rgba(232,84,84,0.4);
+      color: var(--red);
+    }
+    #action-btn.stop:hover:not(:disabled) {
+      background: rgba(232,84,84,0.18);
+      border-color: var(--red);
+      box-shadow: 0 0 20px rgba(232,84,84,0.12);
+    }
+
     #pause-btn {
-      flex: none;
-      padding: 0.6rem 1.5rem;
-      background: #374151; color: #f0f0f0;
-      border: none; border-radius: 0.5rem;
-      font-size: 0.95rem; cursor: pointer;
-      transition: background 0.15s;
-      display: none;
+      display: none; /* JS shows when live */
+      padding: 12px 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-mid);
+      color: var(--text-soft);
+      font-family: var(--ui);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      border-radius: var(--r);
+      cursor: pointer;
+      transition: all 0.2s;
     }
-    #pause-btn:hover:not(:disabled) { background: #4b5563; }
-    #pause-btn:disabled { background: #1f2937; color: #4b5563; cursor: default; }
-    #pause-btn.active { background: #065f46; color: #d1fae5; }
-    #audio-meter {
-      display: none;
-      width: 100%; max-width: 480px;
-      height: 6px;
-      background: #1f2937;
-      border-radius: 3px;
-      overflow: hidden;
+    #pause-btn:hover:not(:disabled) {
+      border-color: var(--orange);
+      color: var(--orange);
     }
-    #audio-meter-bar {
-      height: 100%; width: 0%;
-      background: #22c55e;
-      border-radius: 3px;
-      transition: width 0.06s ease-out;
+    #pause-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+    #pause-btn.active {
+      background: rgba(74,222,128,0.08);
+      border-color: rgba(74,222,128,0.35);
+      color: var(--green);
+    }
+    #pause-btn.active:hover:not(:disabled) {
+      background: rgba(74,222,128,0.14);
+      border-color: var(--green);
     }
   </style>
 </head>
 <body>
-  <div id="status-bar">
-    <div id="status-dot"></div>
-    <span id="status-text">OFFLINE</span>
-    <span id="stat-listeners" style="display:none">listeners: <span id="listener-count">0</span></span>
-    <span id="stat-elapsed"  style="display:none"><span id="elapsed">00:00</span></span>
+
+  <!-- STATUS BAR -->
+  <header class="op-header">
+    <div class="op-status">
+      <div id="status-dot"></div>
+      <span id="status-text">OFFLINE</span>
+    </div>
+
+    <div class="header-brand">
+      <div class="brand-icon">🎙</div>
+      <div>
+        <div class="brand-name">Gibberly</div>
+        <div class="brand-sub">Operator Console</div>
+      </div>
+    </div>
+
+    <div class="header-meta">
+      <span id="stat-listeners">👥 <span id="listener-count">0</span></span>
+      <span id="stat-elapsed"><span id="elapsed">00:00</span></span>
+    </div>
+  </header>
+
+  <!-- MAIN GRID -->
+  <div class="op-grid">
+
+    <!-- LEFT: Session info -->
+    <aside class="session-panel">
+      <div class="qr-wrap">
+        <div id="qr-canvas"></div>
+      </div>
+      <div class="session-info">
+        <a id="live-url" href="#" target="_blank"></a>
+        <a id="debug-link" href="/listen/debug.html" target="_blank">Open debug page</a>
+      </div>
+    </aside>
+
+    <!-- CENTER: Phrase display -->
+    <main class="phrase-panel">
+      <div class="panel-label">Live Translation</div>
+      <div id="last-phrase"></div>
+    </main>
+
+    <!-- RIGHT: Controls -->
+    <aside class="controls-panel">
+      <div class="ctrl-group">
+        <span class="ctrl-label">Source Language</span>
+        <select id="source-lang-select">
+          <option value="de-DE">🇩🇪 German sermon</option>
+          <option value="en-US">🇬🇧 English sermon</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-label">Input Device</span>
+        <select id="device-select"><option value="">Loading devices…</option></select>
+      </div>
+
+      <div class="ctrl-group channel-group">
+        <span class="ctrl-label">Channel</span>
+        <select id="channel-select" style="display:none">
+          <option value="left">Left channel</option>
+          <option value="right">Right channel</option>
+          <option value="mix">Mix (L+R)</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group meter-wrap">
+        <span class="ctrl-label">Audio Level</span>
+        <div id="audio-meter" style="display:none">
+          <div id="audio-meter-bar"></div>
+        </div>
+      </div>
+    </aside>
+
   </div>
 
-  <div id="qr-section">
-    <div id="qr-canvas"></div>
-    <a id="live-url" href="#" target="_blank"></a>
-    <a id="debug-link" href="/listen/debug.html" target="_blank" style="display:block; font-size:0.75rem; color:#6b7280; margin-top:0.5rem; text-decoration:none;">Open debug page →</a>
-  </div>
-
-  <p id="last-phrase"></p>
-
-  <div id="controls">
-    <select id="source-lang-select">
-      <option value="de-DE">German sermon</option>
-      <option value="en-US">English sermon</option>
-    </select>
-    <select id="device-select"><option value="">Loading devices…</option></select>
-    <select id="channel-select" style="display:none">
-      <option value="left">Left</option>
-      <option value="right">Right</option>
-      <option value="mix">Mix</option>
-    </select>
+  <!-- FOOTER -->
+  <footer class="op-footer">
     <input type="file" id="file-input" accept=".wav">
-    <button id="action-btn">▶ Start</button>
+    <button id="action-btn">▶ Start Session</button>
     <button id="pause-btn" disabled>⏸ Pause</button>
-  </div>
-  <div id="audio-meter"><div id="audio-meter-bar"></div></div>
+  </footer>
 
   <script src="config.js"></script>
   <script src="qrcode.min.js"></script>
