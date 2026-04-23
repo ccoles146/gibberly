@@ -251,6 +251,22 @@ All responses include:
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 
+### Azure credential scope
+
+**Self-hosted:** API keys are unavoidable — users generate their own and store them in `.env`. The Bicep template creates a dedicated resource group with the minimum required services; there is no subscription-level credential involved.
+
+**Hosted paid backend:** The backend runs on Azure (App Service or Container Apps) and uses **Managed Identity** — no API keys in `.env` at all. The Azure SDK's `DefaultAzureCredential` is used for all three services:
+
+| Service | Self-hosted auth | Hosted auth |
+|---------|-----------------|-------------|
+| Speech (STT + TTS) | `AZURE_SPEECH_KEY` | Managed Identity |
+| Azure OpenAI | `AZURE_OPENAI_API_KEY` | Managed Identity |
+| Web PubSub | `AZURE_WEBPUBSUB_CONNECTION_STRING` | Managed Identity |
+
+`backend/config.py` detects whether keys are present; if absent it falls back to `DefaultAzureCredential`. The SDK clients in `stt.py`, `tts.py`, `pubsub.py`, and `llm_translator.py` are updated to accept either a key or a credential object.
+
+This eliminates the largest class of credential-leakage risk on the hosted path — there are no keys to rotate, expose in logs, or leak via environment dumps.
+
 ### Error sanitisation
 
 Exception strings are never forwarded to WebSocket clients or HTTP responses. Clients receive a fixed message type (e.g. `{type: "tts_error"}`); full detail is logged server-side only. `backend/main.py` installs a global exception handler enforcing this.
@@ -268,7 +284,11 @@ All `lang` query parameters are validated against the `SUPPORTED_LANGUAGES` list
 | `backend/auth.py` | `generate_listener_token(session_id)` and `validate_listener_token(session_id, token)` helpers |
 | `operator/app.js` | Use `textContent` not `innerHTML` for all user-sourced data; sanitise console log output |
 | `listener/app.js` | Use `textContent`/DOM methods for language list and transcript rendering |
-| `deploy/azure.bicep` | Generate `LISTENER_TOKEN_SECRET` and output to `.env` |
+| `deploy/azure.bicep` | Generate `LISTENER_TOKEN_SECRET` and output to `.env`; assign Managed Identity roles for hosted deployment |
+| `backend/stt.py` | Accept `DefaultAzureCredential` when no key present |
+| `backend/tts.py` | Accept `DefaultAzureCredential` when no key present |
+| `backend/pubsub.py` | Accept `DefaultAzureCredential` when no key present |
+| `backend/llm_translator.py` | Accept `DefaultAzureCredential` when no key present |
 
 ---
 
