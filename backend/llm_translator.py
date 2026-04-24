@@ -3,6 +3,8 @@ from collections import deque
 
 from openai import AsyncAzureOpenAI
 
+_VALID_TONES = {"calm", "warm", "urgent", "emphatic", "joyful", "solemn", "questioning"}
+
 
 def _build_system_prompt(target_languages: list[dict]) -> str:
     lang_keys = "\n".join(
@@ -36,12 +38,14 @@ Return JSON only with exactly these keys:
 - clean_src: cleaned source text (fillers and false starts removed)
 - pending: brief note on any unresolved grammatical arc (e.g. "mid-enumeration,
   continuation expected"); empty string if the thought is complete
+- tone: one of [calm, warm, urgent, emphatic, joyful, solemn, questioning]
+  — the dominant emotional register of the speaker in this chunk
 {lang_keys}
 
 ## Example
 Context: [1] "Und erst nach zweieinhalb Tagen" → "And only after two and a half days"
 New chunk: "als plötzlich der Friede da ist"
-CORRECT output: {{"clean_src": "als plötzlich der Friede da ist", "en_text": "when suddenly the peace arrived", "pending": ""}}
+CORRECT output: {{"clean_src": "als plötzlich der Friede da ist", "en_text": "when suddenly the peace arrived", "pending": "", "tone": "solemn"}}
 WRONG output: any output that re-includes the context lines\
 """
 
@@ -93,7 +97,7 @@ class LLMTranslator:
 
     async def translate(self, raw: str) -> dict:
         if not raw.strip():
-            result = {"clean_src": ""}
+            result = {"clean_src": "", "tone": "calm"}
             for lang in self._target_languages:
                 result[lang["llm_key"]] = ""
             return result
@@ -117,7 +121,10 @@ class LLMTranslator:
         clean_src = parsed.get("clean_src", "")
         self._pending = parsed.get("pending", "")
 
-        result = {"clean_src": clean_src}
+        raw_tone = parsed.get("tone", "calm")
+        tone = raw_tone if raw_tone in _VALID_TONES else "calm"
+
+        result = {"clean_src": clean_src, "tone": tone}
         for lang in self._target_languages:
             result[lang["llm_key"]] = parsed.get(lang["llm_key"], "")
 

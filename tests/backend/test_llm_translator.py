@@ -226,3 +226,41 @@ async def test_system_prompt_lists_all_target_languages(mock_client_class):
     system_msg = call_args.kwargs["messages"][0]["content"]
     assert "en_text" in system_msg
     assert "es_text" in system_msg
+
+
+@pytest.mark.asyncio
+@patch("backend.llm_translator.AsyncAzureOpenAI")
+async def test_translate_returns_tone_field(mock_client_class):
+    """translate() includes a 'tone' key in the result dict."""
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_client.chat.completions.create = AsyncMock(
+        return_value=_make_mock_response(
+            '{"clean_src": "Gott liebt euch", "en_text": "God loves you", "pending": "", "tone": "warm"}'
+        )
+    )
+
+    from backend.llm_translator import LLMTranslator
+    translator = LLMTranslator("https://ep", "key", "gpt-4o-mini", target_languages=ENGLISH_ONLY)
+    result = await translator.translate("Gott liebt euch")
+
+    assert result["tone"] == "warm"
+
+
+@pytest.mark.asyncio
+@patch("backend.llm_translator.AsyncAzureOpenAI")
+async def test_translate_unknown_tone_defaults_to_calm(mock_client_class):
+    """An unrecognised tone value from the LLM is coerced to 'calm'."""
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_client.chat.completions.create = AsyncMock(
+        return_value=_make_mock_response(
+            '{"clean_src": "Test", "en_text": "Test", "pending": "", "tone": "LOUDLY"}'
+        )
+    )
+
+    from backend.llm_translator import LLMTranslator
+    translator = LLMTranslator("https://ep", "key", "gpt-4o-mini", target_languages=ENGLISH_ONLY)
+    result = await translator.translate("Test")
+
+    assert result["tone"] == "calm"
