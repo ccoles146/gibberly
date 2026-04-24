@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.13, FastAPI, slowapi (rate limiting), azure-identity (Managed Identity), HMAC-SHA256 (join tokens), Azure Bicep, Docker Compose, vanilla JS.
 
+**Status:** Awaiting Implementation
+
 ---
 
 ## File Map

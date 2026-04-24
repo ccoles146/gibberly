@@ -8,6 +8,7 @@
 
 **Tech Stack:** Vanilla JS, Web Audio API (AudioWorklet), WebSocket API, `qrcode-generator` (bundled), FastAPI (CORSMiddleware + new route), pytest + httpx for backend tests.
 
+**Status:** COMPLETE
 ---
 
 ## File Map

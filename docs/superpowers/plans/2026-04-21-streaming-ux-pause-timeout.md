@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.13, FastAPI/Starlette, asyncio, pytest + unittest.mock; Vanilla JS, Web Audio API.
 
+**Status:** Implemented
+
 ---
 
 ## File Map

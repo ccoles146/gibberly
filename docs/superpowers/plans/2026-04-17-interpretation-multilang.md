@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python/FastAPI backend, Azure Speech SDK, Azure OpenAI (GPT-4o mini), Azure Web PubSub, plain HTML/JS frontend.
 
+**Status:** COMPLETE
+
 ---
 
 ## File map

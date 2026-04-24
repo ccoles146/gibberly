@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-04-08-llm-stt-cleaning-design.md`
 
+**Status:** COMPLETE
+
 ---
 
 ## File Map
