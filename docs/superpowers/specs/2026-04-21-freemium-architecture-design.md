@@ -242,7 +242,7 @@ The backend assumes TLS is terminated at the reverse proxy (nginx or Azure App S
 
 ### Debug page
 
-`/listen/debug.html` is only served when `DEBUG=true` in `.env`. In production it returns 404.
+The Audio Diagnostics view is a tab inside `operator/index.html`, not a separate URL. It is therefore already behind operator access — no `DEBUG` gate is needed and there is no `listener/debug.html` to serve or 404.
 
 ### Security headers
 
@@ -310,6 +310,5 @@ Sessions live in FastAPI process memory. For dozens of concurrent organisations 
 - Second session start with same licence key returns HTTP 429 (paid path only)
 - Azure Table Storage has a usage record after each session completes
 - Listener URL without a valid join token returns HTTP 401 from `/negotiate`
-- `/listen/debug.html` returns 404 when `DEBUG=false`
 - `curl -X OPTIONS` with a foreign `Origin` header returns 403
 - Error response bodies contain no stack traces or Azure resource names
