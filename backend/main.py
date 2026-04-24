@@ -38,6 +38,26 @@ def list_languages():
     return [{"code": l["code"], "name": l["name"]} for l in SUPPORTED_LANGUAGES]
 
 
+OPENAI_TTS_VOICES = [
+    {"id": "coral",   "label": "Coral — warm, natural"},
+    {"id": "onyx",    "label": "Onyx — deep, authoritative"},
+    {"id": "ash",     "label": "Ash — conversational, clear"},
+    {"id": "shimmer", "label": "Shimmer — soft, gentle"},
+    {"id": "nova",    "label": "Nova — bright, energetic"},
+    {"id": "alloy",   "label": "Alloy — neutral, balanced"},
+]
+
+
+@app.get("/tts-config")
+async def get_tts_config():
+    return {
+        "mode":   settings.tts_mode,
+        "model":  settings.openai_tts_model,
+        "voice":  settings.openai_tts_voice,
+        "voices": OPENAI_TTS_VOICES,
+    }
+
+
 @app.get("/current-session")
 def current_session():
     sid = app.state.current_session_id
@@ -112,7 +132,7 @@ def audio_leave(session_id: str, lang: str = "en"):
 
 
 @app.websocket("/ws/stream")
-async def stream(websocket: WebSocket, source_lang: str = "de-DE"):
+async def stream(websocket: WebSocket, source_lang: str = "de-DE", tts_voice: str = ""):
     await websocket.accept()
 
     if source_lang not in _VALID_SOURCE_LANGS:
@@ -162,6 +182,10 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE"):
         context_window=settings.llm_context_window,
         loop=loop,
         on_status=send_status,
+        openai_tts_endpoint=settings.effective_tts_endpoint,
+        openai_tts_api_key=settings.effective_tts_api_key,
+        openai_tts_model=settings.openai_tts_model,
+        openai_tts_voice=tts_voice or settings.openai_tts_voice,
     )
     app.state.sessions[handler.session_id] = handler
     app.state.current_session_id = handler.session_id
