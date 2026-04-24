@@ -209,16 +209,6 @@
 
   populateDevices();
 
-  // ── Debug link ─────────────────────────────────────────────────────────────
-  (async function initDebugLink() {
-    try {
-      const res = await fetch(backendHttp + '/current-session');
-      if (res.ok) {
-        const { session_id } = await res.json();
-      }
-    } catch (_) {}
-  })();
-
   // ── Elapsed timer ──────────────────────────────────────────────────────────
   let elapsedTimer = null;
   let startTime    = 0;

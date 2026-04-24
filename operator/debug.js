@@ -18,7 +18,7 @@
   const logBody         = document.getElementById('log-body');
   const transcriptBody  = document.getElementById('transcript-body');
   const transcriptCount = document.getElementById('transcript-count');
-  const transcriptWrap  = document.getElementById('transcript-wrap');
+  const transcriptWrap  = document.querySelector('.transcript-wrap');
   const copyTextBtn     = document.getElementById('copy-transcript');
   const copyCsvBtn      = document.getElementById('copy-csv');
 
