@@ -8,7 +8,10 @@
   const elapsedEl      = document.getElementById('elapsed');
   const qrCanvas       = document.getElementById('qr-canvas');
   const liveUrlEl      = document.getElementById('live-url');
-  const lastPhraseEl   = document.getElementById('last-phrase');
+  const srcInnerEl     = document.getElementById('src-inner');
+  const tgtInnerEl     = document.getElementById('tgt-inner');
+  const tpSrcLabel     = document.getElementById('tp-src-label');
+  const tpTgtLabel     = document.getElementById('tp-tgt-label');
   const deviceSelect   = document.getElementById('device-select');
   const channelSelect  = document.getElementById('channel-select');
   const fileInput      = document.getElementById('file-input');
@@ -34,6 +37,77 @@
     liveUrlEl.href = liveUrl;
   })();
 
+  // ── Language labels ────────────────────────────────────────────────────────
+  const LANG_NAMES = {
+    'de-DE': 'Deutsch', 'de':    'Deutsch',
+    'en-US': 'English', 'en-GB': 'English', 'en': 'English',
+    'fr-FR': 'Français', 'es-ES': 'Español',
+  };
+
+  function updateTpLabels() {
+    const srcCode = (sourceLangSelect ? sourceLangSelect.value : 'de-DE').split('-')[0];
+    tpSrcLabel.textContent = LANG_NAMES[sourceLangSelect?.value] || LANG_NAMES[srcCode] || 'Source';
+    tpTgtLabel.textContent = 'Translation';
+  }
+  if (sourceLangSelect) sourceLangSelect.addEventListener('change', updateTpLabels);
+  updateTpLabels();
+
+  // ── Teleprompter engine ────────────────────────────────────────────────────
+  function makeTeleprompter(innerEl, lineClass, placeholderText) {
+    const MAX_LINES   = 8;
+    const MS_PER_WORD = 220;
+    let queue     = [];
+    let timer     = null;
+    let currentEl = null;
+    let lines     = [];
+    let isFirst   = true;
+
+    function tick() {
+      if (!queue.length) { timer = null; return; }
+      const item = queue.shift();
+      if (item.newLine) {
+        currentEl = null;
+      } else {
+        if (!currentEl) {
+          const p = document.createElement('p');
+          p.className = lineClass;
+          innerEl.appendChild(p);
+          lines.push(p);
+          while (lines.length > MAX_LINES) lines.shift().remove();
+          currentEl = p;
+        }
+        currentEl.textContent += (currentEl.textContent ? ' ' : '') + item.word;
+      }
+      timer = queue.length ? setTimeout(tick, MS_PER_WORD) : null;
+    }
+
+    return {
+      onPhrase(text) {
+        const words = text.trim().split(/\s+/).filter(Boolean);
+        if (!words.length) return;
+        if (!isFirst) {
+          const last = queue[queue.length - 1];
+          if (!last || !last.newLine) queue.push({ newLine: true });
+        }
+        isFirst = false;
+        words.forEach(w => queue.push({ word: w }));
+        if (timer === null) timer = setTimeout(tick, MS_PER_WORD);
+      },
+      clear() {
+        queue = []; currentEl = null; lines = []; isFirst = true;
+        if (timer) { clearTimeout(timer); timer = null; }
+        innerEl.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'tp-placeholder';
+        p.textContent = placeholderText;
+        innerEl.appendChild(p);
+      },
+    };
+  }
+
+  const srcTp = makeTeleprompter(srcInnerEl, 'tp-line-de', 'Waiting for audio…');
+  const tgtTp = makeTeleprompter(tgtInnerEl, 'tp-line-en', 'Waiting for translation…');
+
   // ── State machine ──────────────────────────────────────────────────────────
   let state           = 'idle';
   let levelDecayTimer = null;   // declared early — clearAudioLevel() called by setState('idle') below
@@ -52,7 +126,7 @@
     statListeners.style.display = s === 'live' ? '' : 'none';
     statElapsed.style.display   = s === 'live' ? '' : 'none';
     if (sourceLangSelect) sourceLangSelect.disabled = (s === 'live' || s === 'connecting');
-    pauseBtn.style.display = s === 'live' ? '' : 'none';
+    pauseBtn.style.display = s === 'live' ? 'inline-block' : 'none';
     audioMeter.style.display = s === 'live' ? '' : 'none';
     if (s !== 'live') clearAudioLevel();
     if (s !== 'live') {
@@ -218,12 +292,10 @@
   function handleStatusMessage(msg) {
     console.log('[gibberly] msg:', msg.type, msg);
     if (msg.type === 'phrase') {
-      const en = msg.en_text || msg.text || '';
-      const parts = [];
-      if (msg.raw_src || msg.raw_de) parts.push(`raw: ${msg.raw_src || msg.raw_de}`);
-      if (msg.clean_src || msg.clean_de) parts.push(`clean: ${msg.clean_src || msg.clean_de}`);
-      parts.push(`en: ${en}`);
-      lastPhraseEl.innerHTML = parts.map(p => `<div>${p}</div>`).join('');
+      const src = msg.raw_src || msg.raw_de || msg.clean_src || msg.clean_de || '';
+      const tgt = msg.en_text || msg.text || '';
+      if (src) srcTp.onPhrase(src);
+      if (tgt) tgtTp.onPhrase(tgt);
     } else if (msg.type === 'llm_fallback') {
       console.warn(`[gibberly] LLM fallback — chunk: ${msg.chunk}`);
     } else if (msg.type === 'tts_error') {
@@ -273,7 +345,8 @@
           setState('live');
           pauseBtn.disabled = false;
           startTimer();
-          lastPhraseEl.textContent = '';
+          srcTp.clear();
+          tgtTp.clear();
           listenerCount.textContent = '0';
           debugLinkEl.href = `${backendHttp}/listen/debug.html?session=${msg.session_id}`;
           onOpen(ws);

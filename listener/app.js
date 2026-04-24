@@ -3,16 +3,73 @@
   const audioBtn        = document.getElementById('audio-btn');
   const statusEl        = document.getElementById('status');
   const readingPaneEl   = document.getElementById('reading-pane');
+  const readingInnerEl  = document.getElementById('reading-pane-inner');
   const pausedPill      = document.getElementById('paused-pill');
   const speedRow        = document.getElementById('speed-row');
   const speedSlider     = document.getElementById('speed-slider');
   const speedLabel      = document.getElementById('speed-label');
-  const debugEl         = document.getElementById('debug');
   const muteWarningEl   = document.getElementById('mute-warning');
   const langSelect      = document.getElementById('lang-select');
   const transcriptList  = document.getElementById('transcript-list');
   const transcriptCount = document.getElementById('transcript-count');
   const dlTranscriptBtn = document.getElementById('dl-transcript');
+
+  // ── Debug panel ────────────────────────────────────────────────────────────
+  const debugPanelEl  = document.getElementById('debug-panel');
+  const dbgQEl        = document.getElementById('dbg-q');
+  const dbgIvEl       = document.getElementById('dbg-iv');
+  const dbgPcEl       = document.getElementById('dbg-pc');
+  const dbgLogEl      = document.getElementById('dbg-log');
+
+  const isDebugUrl    = new URLSearchParams(window.location.search).has('debug');
+  let   debugVisible  = isDebugUrl;
+  let   debugEntries  = [];
+  let   debugPhraseCount = 0;
+
+  function setDebugVisible(v) {
+    debugVisible = v;
+    debugPanelEl.classList.toggle('active', v);
+  }
+  if (isDebugUrl) setDebugVisible(true);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'd' || e.key === 'D') setDebugVisible(!debugVisible);
+  });
+
+  function dbgLogPhrase(text, wordCount, queueBefore, intervalMs) {
+    debugPhraseCount++;
+    dbgPcEl.textContent = debugPhraseCount;
+
+    const ts      = new Date().toISOString().slice(11, 23);
+    const isFast  = intervalMs < 220;
+    const isBurst = (queueBefore + wordCount) > 25;
+    const cls     = isFast ? 'dbg-alert' : isBurst ? 'dbg-warn' : '';
+    const flags   = [isFast ? '⚡ FAST interval' : '', isBurst ? '📚 BURST queue' : '']
+                      .filter(Boolean).join('  ');
+
+    const entry = document.createElement('div');
+    entry.className = `dbg-entry ${cls}`;
+    entry.innerHTML =
+      `<span class="dbg-ts">${ts}</span>  ` +
+      `<span class="dbg-count">${wordCount}w</span>  ` +
+      `<span class="dbg-q">Q:${queueBefore}→${queueBefore + wordCount}</span>  ` +
+      `<span class="dbg-ms">${Math.round(intervalMs)}ms/w</span>` +
+      (flags ? `  <span class="dbg-flag">${flags}</span>` : '') +
+      `<br><span class="dbg-txt">"${text.substring(0, 80)}"</span>`;
+
+    debugEntries.push(entry);
+    if (debugEntries.length > 60) {
+      debugEntries.shift().remove();
+    }
+    dbgLogEl.appendChild(entry);
+    dbgLogEl.scrollTop = dbgLogEl.scrollHeight;
+  }
+
+  function dbgUpdateStats() {
+    if (!debugVisible) return;
+    dbgQEl.textContent  = wordQueue.length;
+    dbgIvEl.textContent = Math.round(getTrickleInterval());
+  }
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
@@ -35,6 +92,7 @@
     div.textContent = text;
     transcriptList.appendChild(div);
     dlTranscriptBtn.disabled = false;
+    transcriptList.parentElement.scrollTop = transcriptList.parentElement.scrollHeight;
   }
 
   dlTranscriptBtn.addEventListener('click', () => {
@@ -47,15 +105,20 @@
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   });
 
-  // ── Word queue / sliding window ────────────────────────────────────────────
-  const MAX_DISPLAY_WORDS = 30;
-  const DEFAULT_BASE_MS   = 400;   // fallback: 150 wpm
-  const SPEED_KEY         = 'gibberly_word_speed_multiplier';
+  // ── Teleprompter display — lines scroll upward as new phrases arrive ────────
+  const MAX_LINES     = 12;
+  const DEFAULT_BASE_MS = 400;  // fallback when no history: ~150 wpm
+  const MIN_BASE_MS   = 280;   // hard floor: never faster than ~210 wpm
+  const SPEED_KEY     = 'gibberly_word_speed_multiplier';
 
-  let displayWords  = [];
+  // Queue items: { word: string } | { newLine: true }
   let wordQueue     = [];
   let tickTimer     = null;
-  const phraseHistory = [];   // [{ts: ms, count: n}]
+  let currentLineEl = null;  // <p> currently being filled
+  let lineElements  = [];    // all .reading-line elements in DOM
+  let placeholderEl = readingInnerEl.querySelector('.reading-placeholder');
+  let isFirstPhrase = true;
+  const phraseHistory = [];  // [{ts: ms, count: n}]
 
   function estimateBaseMsPerWord() {
     const now    = Date.now();
@@ -65,27 +128,48 @@
     const totalWords = phraseHistory.reduce((s, e) => s + e.count, 0);
     const windowMs   = phraseHistory[phraseHistory.length - 1].ts - phraseHistory[0].ts;
     if (windowMs < 1000) return DEFAULT_BASE_MS;
-    return windowMs / totalWords;
+    return Math.max(windowMs / totalWords, MIN_BASE_MS);
   }
 
   function getTrickleInterval() {
-    const multiplier = parseFloat(speedSlider.value);
-    return estimateBaseMsPerWord() / multiplier;
+    return estimateBaseMsPerWord() / parseFloat(speedSlider.value);
+  }
+
+  function addWordToLine(word) {
+    const isNewLine = !currentLineEl;
+
+    if (isNewLine) {
+      if (placeholderEl) { placeholderEl.remove(); placeholderEl = null; }
+      const p = document.createElement('p');
+      p.className = 'reading-line';
+      readingInnerEl.appendChild(p);
+      lineElements.push(p);
+      while (lineElements.length > MAX_LINES) {
+        lineElements.shift().remove();
+      }
+      currentLineEl = p;
+    }
+
+    currentLineEl.textContent += (currentLineEl.textContent ? ' ' : '') + word;
   }
 
   function startTick() {
     if (tickTimer !== null) return;
     function tick() {
       if (wordQueue.length > 0) {
-        const word = wordQueue.shift();
-        displayWords.push(word);
-        if (displayWords.length > MAX_DISPLAY_WORDS) displayWords.shift();
-        readingPaneEl.textContent = displayWords.join(' ');
+        const item = wordQueue.shift();
+        if (item.newLine) {
+          currentLineEl = null;
+        } else {
+          addWordToLine(item.word);
+        }
+        dbgUpdateStats();
       }
       if (wordQueue.length > 0) {
         tickTimer = setTimeout(tick, getTrickleInterval());
       } else {
         tickTimer = null;
+        dbgUpdateStats();
       }
     }
     tickTimer = setTimeout(tick, getTrickleInterval());
@@ -95,20 +179,42 @@
     const words = text.trim().split(/\s+/).filter(Boolean);
     if (!words.length) return;
     phraseHistory.push({ ts: Date.now(), count: words.length });
-    wordQueue.push(...words);
+
+    const interval = getTrickleInterval();
+    if (debugVisible) dbgLogPhrase(text, words.length, wordQueue.length, interval);
+
+    // Each phrase on its own line; suppress lineBreak before the very first phrase
+    if (!isFirstPhrase) {
+      const last = wordQueue[wordQueue.length - 1];
+      if (!last || !last.newLine) wordQueue.push({ newLine: true });
+    }
+    isFirstPhrase = false;
+    words.forEach(w => wordQueue.push({ word: w }));
+
     addPhrase(text);
     startTick();
   }
 
   function clearReadingPane() {
-    wordQueue    = [];
-    displayWords = [];
+    wordQueue     = [];
+    currentLineEl = null;
+    lineElements  = [];
+    isFirstPhrase = true;
     if (tickTimer !== null) { clearTimeout(tickTimer); tickTimer = null; }
-    readingPaneEl.textContent = '';
+    readingInnerEl.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'reading-placeholder';
+    p.textContent = 'Waiting for translation…';
+    readingInnerEl.appendChild(p);
+    placeholderEl = p;
+    debugPhraseCount = 0;
+    dbgPcEl.textContent = '0';
+    dbgQEl.textContent  = '0';
+    dbgIvEl.textContent = '—';
   }
 
   // ── Speed slider ───────────────────────────────────────────────────────────
-  const savedSpeed = parseFloat(localStorage.getItem(SPEED_KEY) || '1');
+  const savedSpeed = Math.min(1.0, parseFloat(localStorage.getItem(SPEED_KEY) || '1'));
   speedSlider.value = savedSpeed;
   speedLabel.textContent = savedSpeed + '×';
 
@@ -153,7 +259,6 @@
   loadLanguages();
 
   // ── Connection state ───────────────────────────────────────────────────────
-  function dbg(msg) { if (debugEl) debugEl.textContent = msg; }
 
   let audioCtx     = null;
   let nextPlayTime = 0;
@@ -170,7 +275,7 @@
     connectBtn.disabled    = false;
     langSelect.disabled    = state;
     audioBtn.style.display = state ? 'block' : 'none';
-    speedRow.style.display = state ? '' : 'none';
+    speedRow.style.display = state ? 'flex' : 'none';
     if (!state) {
       audioBtn.textContent = '\uD83D\uDD0A Unmute audio';
       audioBtn.className = '';
@@ -186,7 +291,7 @@
     try {
       audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
     } catch (e) {
-      dbg('decode error: ' + e.message);
+      console.warn('audio decode error:', e.message);
       return;
     }
     const src    = audioCtx.createBufferSource();
@@ -274,7 +379,7 @@
 
       if (msg.type === 'message' && msg.dataType === 'binary') {
         const buf = base64ToArrayBuffer(msg.data);
-        dbg(`audio bytes: ${buf.byteLength} | ctx: ${audioCtx?.state}`);
+        if (debugVisible) console.debug(`audio bytes: ${buf.byteLength} | ctx: ${audioCtx?.state}`);
         playAudio(buf);
       }
 

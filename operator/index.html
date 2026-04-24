@@ -246,73 +246,86 @@
     .phrase-panel {
       display: flex;
       flex-direction: column;
-      padding: 24px 28px;
+      padding: 0;
       overflow: hidden;
     }
 
-    .panel-label {
+    /* ── TELEPROMPTER SPLIT ──────────────────────────────────────────── */
+    .tp-split {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .tp-section {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+      padding: 0 24px;
+    }
+
+    .tp-german  { flex: 4; padding-top: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+    .tp-english { flex: 6; padding-top: 12px; }
+
+    .tp-label {
       font-size: 9px;
       font-weight: 700;
       letter-spacing: 0.14em;
       text-transform: uppercase;
       color: var(--text-dim);
-      margin-bottom: 16px;
       flex-shrink: 0;
+      margin-bottom: 8px;
     }
 
-    #last-phrase {
+    /* overflow:hidden + justify-content:flex-end pins newest line to bottom;
+       old content overflows upward and is clipped + faded by the mask */
+    .tp-pane {
       flex: 1;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      gap: 8px;
+      justify-content: flex-end;
       overflow: hidden;
+      min-height: 0;
+      mask-image: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(0,0,0,0.4) 20%,
+        black 42%);
+      -webkit-mask-image: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(0,0,0,0.4) 20%,
+        black 42%);
     }
 
-    /* The JS generates <div>label: text</div> for each part */
-    #last-phrase div {
+    .tp-inner { flex-shrink: 0; }
+
+    .tp-line-de {
       font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-dim);
-      line-height: 1.5;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    /* Last div = English translation — make it prominent */
-    #last-phrase div:last-child {
-      font-family: var(--serif);
-      font-size: clamp(18px, 2.2vw, 26px);
-      font-style: italic;
-      font-weight: 300;
-      color: var(--text);
-      white-space: normal;
-      margin-top: 8px;
-      line-height: 1.45;
-      border-top: 1px solid var(--border);
-      padding-top: 12px;
-    }
-
-    /* If only one div (text set before session), show it normally */
-    #last-phrase div:only-child {
-      font-family: var(--serif);
-      font-size: clamp(16px, 2vw, 22px);
-      font-style: italic;
-      font-weight: 300;
+      font-size: clamp(13px, 1.4vw, 20px);
+      font-weight: 400;
+      line-height: 1.65;
       color: var(--text-soft);
-      white-space: normal;
-      border-top: none;
-      padding-top: 0;
-      margin-top: 0;
+      padding-bottom: 0.05em;
     }
 
-    #last-phrase:empty::before {
-      content: 'Translation output will appear here\2026';
+    .tp-line-en {
+      font-family: var(--serif);
+      font-size: clamp(22px, 2.6vw, 38px);
+      font-weight: 300;
+      font-style: italic;
+      line-height: 1.52;
+      color: var(--text);
+      letter-spacing: 0.01em;
+      padding-bottom: 0.12em;
+    }
+
+    .tp-placeholder {
+      font-family: var(--serif);
+      font-size: clamp(13px, 1.6vw, 20px);
+      font-weight: 300;
       font-style: italic;
       color: var(--text-dim);
-      font-family: var(--serif);
-      font-size: 18px;
     }
 
     /* ── CONTROLS PANEL (right) ──────────────────────────────────────── */
@@ -514,10 +527,26 @@
       </div>
     </aside>
 
-    <!-- CENTER: Phrase display -->
+    <!-- CENTER: Split teleprompter -->
     <main class="phrase-panel">
-      <div class="panel-label">Live Translation</div>
-      <div id="last-phrase"></div>
+      <div class="tp-split">
+        <div class="tp-section tp-german">
+          <div class="tp-label" id="tp-src-label">Source</div>
+          <div class="tp-pane">
+            <div class="tp-inner" id="src-inner">
+              <p class="tp-placeholder">Waiting for audio…</p>
+            </div>
+          </div>
+        </div>
+        <div class="tp-section tp-english">
+          <div class="tp-label" id="tp-tgt-label">Translation</div>
+          <div class="tp-pane">
+            <div class="tp-inner" id="tgt-inner">
+              <p class="tp-placeholder">Waiting for translation…</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
 
     <!-- RIGHT: Controls -->

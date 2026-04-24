@@ -35,11 +35,11 @@
       --ui:          'Manrope', system-ui, sans-serif;
     }
 
-    html { height: 100%; background: var(--bg); }
+    html { height: 100%; overflow: hidden; background: var(--bg); }
 
     body {
-      min-height: 100vh;
-      min-height: -webkit-fill-available;
+      height: 100%;
+      overflow: hidden;
       background: var(--bg);
       color: var(--text);
       font-family: var(--ui);
@@ -191,34 +191,61 @@
       position: relative;
       z-index: 1;
       overflow: hidden;
+      min-height: 0;
     }
 
     #reading-pane-wrapper {
       flex: 1;
       display: flex;
-      align-items: center;
+      align-items: stretch;
       justify-content: center;
       padding: 20px 22px 16px;
+      overflow: hidden;
+      min-height: 0;
     }
 
+    /* overflow:hidden + justify-content:flex-end keeps newest lines pinned
+       to the bottom; old content overflows upward and is clipped + masked */
     #reading-pane {
       width: 100%;
       max-width: 520px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      min-height: 0;
+      /* Gradient mask fades old lines out at the top */
+      mask-image: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(0,0,0,0.4) 18%,
+        black 38%);
+      -webkit-mask-image: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(0,0,0,0.4) 18%,
+        black 38%);
+    }
+
+    #reading-pane-inner { flex-shrink: 0; }
+
+    .reading-placeholder {
+      font-family: var(--serif);
+      font-size: clamp(17px, 4.5vw, 26px);
+      font-weight: 300;
+      font-style: italic;
+      color: var(--text-dim);
+      padding-bottom: 0.2em;
+    }
+
+    /* One DOM element per incoming phrase */
+    .reading-line {
       font-family: var(--serif);
       font-size: clamp(28px, 7.5vw, 44px);
       font-weight: 300;
       font-style: italic;
       line-height: 1.52;
       color: var(--text);
-      text-align: center;
       letter-spacing: 0.01em;
-      min-height: 100px;
-    }
-
-    #reading-pane:empty::before {
-      content: 'Waiting for translation\2026';
-      font-size: 0.6em;
-      color: var(--text-dim);
+      padding-bottom: 0.12em;
     }
 
     /* ── SPEED ROW ───────────────────────────────────────────────────── */
@@ -351,8 +378,49 @@
       z-index: 1;
     }
 
-    /* Debug hidden */
-    #debug { display: none; }
+    /* ── DEBUG PANEL ─────────────────────────────────────────────────── */
+    #debug-panel {
+      display: none;
+      position: fixed;
+      bottom: 76px;
+      left: 0; right: 0;
+      max-height: 230px;
+      overflow-y: auto;
+      background: rgba(4, 6, 12, 0.97);
+      border-top: 1px solid var(--border);
+      z-index: 500;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11px;
+      color: var(--text-soft);
+      padding: 6px 12px 10px;
+    }
+    #debug-panel.active { display: block; }
+    .dbg-stats {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 4px 0 6px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 6px;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      color: var(--amber);
+    }
+    .dbg-hint { color: var(--green); }
+    .dbg-entry {
+      padding: 2px 0 2px 6px;
+      border-left: 2px solid transparent;
+      margin-bottom: 2px;
+      line-height: 1.6;
+    }
+    .dbg-entry.dbg-warn  { border-left-color: var(--orange); background: rgba(245,158,11,0.05); }
+    .dbg-entry.dbg-alert { border-left-color: var(--red);    background: rgba(232,84,84,0.06); }
+    .dbg-ts    { color: var(--text-dim); }
+    .dbg-count { color: var(--teal); }
+    .dbg-q     { color: var(--amber); }
+    .dbg-ms    { color: var(--text); }
+    .dbg-flag  { color: var(--red); font-weight: bold; }
+    .dbg-txt   { color: #4a5e7a; font-size: 10px; }
 
     /* ── BOTTOM NAV BAR ──────────────────────────────────────────────── */
     .bottom-bar {
@@ -456,14 +524,18 @@
       <div id="paused-pill">⏸ Paused</div>
     </div>
     <div id="reading-pane-wrapper">
-      <div id="reading-pane"></div>
+      <div id="reading-pane">
+        <div id="reading-pane-inner">
+          <p class="reading-placeholder">Waiting for translation…</p>
+        </div>
+      </div>
     </div>
   </main>
 
   <!-- SPEED -->
   <div id="speed-row">
     <span class="speed-text">Speed</span>
-    <input type="range" id="speed-slider" min="0.5" max="1.5" step="0.25" value="1.0">
+    <input type="range" id="speed-slider" min="0.5" max="1.0" step="0.25" value="1.0">
     <span id="speed-label">1.0×</span>
   </div>
 
@@ -481,7 +553,16 @@
     🔔 <strong>No sound?</strong> Check the silent switch on the left side of your iPhone — if it shows orange, flip it up.
   </div>
 
-  <p id="debug"></p>
+  <!-- DEBUG PANEL (shown with ?debug=1 or press D) -->
+  <div id="debug-panel">
+    <div class="dbg-stats">
+      <span>QUEUE: <span id="dbg-q">0</span>w</span>
+      <span>INTERVAL: <span id="dbg-iv">—</span>ms/w</span>
+      <span>PHRASES: <span id="dbg-pc">0</span></span>
+      <span class="dbg-hint">press D to toggle</span>
+    </div>
+    <div id="dbg-log"></div>
+  </div>
 
   <!-- BOTTOM BAR -->
   <nav class="bottom-bar">
