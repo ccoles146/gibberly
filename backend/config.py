@@ -30,7 +30,7 @@ class Settings:
     @property
     def tts_mode(self) -> str:
         """One of: 'openai_primary', 'openai_secondary', 'azure'."""
-        if self.azure_openai_region.lower() == "eastus":
+        if self.azure_openai_region.lower() in {"eastus", "eastus2"}:
             return "openai_primary"
         if self.azure_openai_eastus_endpoint and self.azure_openai_eastus_api_key:
             return "openai_secondary"
