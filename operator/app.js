@@ -20,6 +20,9 @@
   const sourceLangSelect = document.getElementById('source-lang-select');
   const audioMeter    = document.getElementById('audio-meter');
   const audioMeterBar = document.getElementById('audio-meter-bar');
+  const voiceGroup    = document.getElementById('voice-group');
+  const voiceSelect   = document.getElementById('voice-select');
+  const STORAGE_VOICE = 'gibberly_tts_voice';
 
   // ── Config ──────────────────────────────────────────────────────────────────
   const backendWs  = window.GIBBERLY_BACKEND;
@@ -125,6 +128,7 @@
     statListeners.style.display = s === 'live' ? '' : 'none';
     statElapsed.style.display   = s === 'live' ? '' : 'none';
     if (sourceLangSelect) sourceLangSelect.disabled = (s === 'live' || s === 'connecting');
+    voiceSelect.disabled = (s === 'live' || s === 'connecting');
     pauseBtn.style.display = s === 'live' ? 'inline-block' : 'none';
     audioMeter.style.display = s === 'live' ? '' : 'none';
     if (s !== 'live') clearAudioLevel();
@@ -208,6 +212,40 @@
   });
 
   populateDevices();
+
+  // ── TTS config / voice picker ──────────────────────────────────────────────
+  async function loadTtsConfig() {
+    let config;
+    try {
+      const res = await fetch(backendHttp + '/tts-config');
+      if (!res.ok) return;
+      config = await res.json();
+    } catch (_) { return; }
+
+    if (config.mode === 'azure') return;
+
+    voiceSelect.innerHTML = '';
+    (config.voices || []).forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.id;
+      opt.textContent = v.label;
+      voiceSelect.appendChild(opt);
+    });
+
+    const saved = localStorage.getItem(STORAGE_VOICE);
+    const defaultVoice = saved || config.voice || 'coral';
+    if ([...voiceSelect.options].some(o => o.value === defaultVoice)) {
+      voiceSelect.value = defaultVoice;
+    }
+
+    voiceGroup.style.display = '';
+  }
+
+  voiceSelect.addEventListener('change', () => {
+    localStorage.setItem(STORAGE_VOICE, voiceSelect.value);
+  });
+
+  loadTtsConfig();
 
   // ── Elapsed timer ──────────────────────────────────────────────────────────
   let elapsedTimer = null;
@@ -321,7 +359,9 @@
   // ── Shared WebSocket session setup ─────────────────────────────────────────
   function openWebSocket(onOpen) {
     const sourceLang = sourceLangSelect ? sourceLangSelect.value : 'de-DE';
-    const ws = new WebSocket(`${backendWs}/ws/stream?source_lang=${sourceLang}`);
+    const voice = voiceSelect.value || localStorage.getItem(STORAGE_VOICE) || '';
+    const voiceParam = voice ? `&tts_voice=${encodeURIComponent(voice)}` : '';
+    const ws = new WebSocket(`${backendWs}/ws/stream?source_lang=${sourceLang}${voiceParam}`);
     ws.binaryType = 'arraybuffer';
     activeWs = ws;
 
