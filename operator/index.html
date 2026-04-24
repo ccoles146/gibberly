@@ -488,6 +488,278 @@
       background: rgba(74,222,128,0.14);
       border-color: var(--green);
     }
+
+    /* ── TAB NAVIGATION ─────────────────────────────────────────────── */
+    .tab-nav {
+      display: flex;
+      gap: 2px;
+      align-items: center;
+    }
+
+    .tab-btn {
+      padding: 4px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--r-xs);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-family: var(--ui);
+      background: transparent;
+      color: var(--text-dim);
+      transition: all 0.15s;
+    }
+    .tab-btn:hover { color: var(--text-soft); border-color: var(--border-mid); }
+    .tab-btn.active {
+      background: var(--amber-glow);
+      border-color: rgba(232,154,14,0.3);
+      color: var(--amber);
+    }
+
+    /* ── TAB PANELS ──────────────────────────────────────────────────── */
+    .tab-panel {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+    .tab-panel[hidden] { display: none; }
+
+    /* ── DEBUG PANEL ─────────────────────────────────────────────────── */
+    .debug-panel .dbg-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-mid);
+      flex-shrink: 0;
+    }
+
+    .debug-panel button {
+      padding: 5px 12px;
+      border: 1px solid var(--border-mid);
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: var(--ui);
+      background: var(--bg-card);
+      color: var(--text-soft);
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .debug-panel button:hover:not(:disabled)  { border-color: var(--text-soft); color: var(--text); }
+    .debug-panel button:disabled               { opacity: 0.35; cursor: default; }
+    .debug-panel #connect-btn           { border-color: rgba(232,154,14,0.4); color: var(--amber); }
+    .debug-panel #connect-btn:hover     { background: var(--amber-glow); }
+    .debug-panel #connect-btn.connected { border-color: rgba(232,84,84,0.4); color: var(--red); }
+    .debug-panel #refresh-session-btn:hover { border-color: var(--blue, #60a5fa); color: var(--blue, #60a5fa); }
+    .debug-panel #mute-btn.muted            { border-color: rgba(232,84,84,0.4); color: var(--red); }
+    .debug-panel #dl-mp3:hover     { border-color: var(--teal); color: var(--teal); }
+    .debug-panel #dl-json:hover    { border-color: var(--text-soft); color: var(--text); }
+    .debug-panel #clear-btn:hover  { border-color: var(--red); color: var(--red); }
+
+    #dbg-status {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      flex: 1;
+      text-align: right;
+    }
+
+    .debug-panel .dbg-content {
+      flex: 1;
+      padding: 14px 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .debug-panel .dbg-content::-webkit-scrollbar { width: 3px; }
+    .debug-panel .dbg-content::-webkit-scrollbar-track { background: transparent; }
+    .debug-panel .dbg-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .dbg-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .dbg-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 8px 12px;
+      transition: border-color 0.2s;
+    }
+    .dbg-card:hover { border-color: var(--border-mid); }
+
+    .dbg-card-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    .card-value {
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .card-value.warn { color: var(--orange); }
+    .card-value.bad  { color: var(--red); }
+    .card-value.good { color: var(--green); }
+
+    #phrase-bar {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #60a5fa;
+      min-height: 40px;
+      flex-shrink: 0;
+      font-family: var(--mono);
+    }
+
+    .dbg-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .dbg-section-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    .debug-panel details {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+
+    .debug-panel details > summary {
+      cursor: pointer;
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--text-soft);
+      user-select: none;
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+    .debug-panel details > summary::-webkit-details-marker { display: none; }
+    .debug-panel details > summary::after {
+      content: '▼';
+      font-size: 9px;
+      color: var(--text-dim);
+      transition: transform 0.2s;
+    }
+    .debug-panel details[open] > summary::after { transform: rotate(180deg); }
+
+    .transcript-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-surface);
+    }
+
+    .transcript-wrap {
+      max-height: 40vh;
+      overflow-y: auto;
+    }
+    .transcript-wrap::-webkit-scrollbar { width: 3px; }
+    .transcript-wrap::-webkit-scrollbar-track { background: transparent; }
+    .transcript-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .table-wrap {
+      overflow-x: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+    }
+    .table-wrap::-webkit-scrollbar { height: 4px; }
+    .table-wrap::-webkit-scrollbar-track { background: transparent; }
+    .table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .debug-panel table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--mono);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .debug-panel thead th {
+      background: var(--bg-surface);
+      color: var(--text-dim);
+      padding: 6px 10px;
+      text-align: right;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .debug-panel thead th:first-child,
+    .debug-panel thead th.str   { text-align: left; }
+
+    .debug-panel tbody tr:nth-child(even) { background: #0d1320; }
+    .debug-panel tbody tr:hover            { background: #131d30; }
+
+    .debug-panel td {
+      padding: 4px 10px;
+      border-bottom: 1px solid rgba(30, 44, 68, 0.5);
+      text-align: right;
+      color: var(--text-soft);
+    }
+    .debug-panel td:first-child,
+    .debug-panel td.str { text-align: left; color: var(--text); }
+
+    .ok       { color: var(--green); }
+    .fail     { color: var(--red); }
+    .empty    { color: var(--orange); }
+    .lag-ok   { color: var(--green); }
+    .lag-warn { color: var(--orange); }
+    .lag-bad  { color: var(--red); }
+
+    .debug-panel .phrase-marker td {
+      background: rgba(96, 165, 250, 0.08) !important;
+      color: #60a5fa !important;
+      font-style: italic;
+    }
+
+    .table-note {
+      font-size: 10px;
+      color: var(--text-dim);
+      padding: 8px 12px;
+      font-family: var(--mono);
+      border-top: 1px solid var(--border);
+      background: var(--bg-surface);
+    }
   </style>
 </head>
 <body>
@@ -511,10 +783,18 @@
       <span id="stat-listeners">👥 <span id="listener-count">0</span></span>
       <span id="stat-elapsed"><span id="elapsed">00:00</span></span>
     </div>
+
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="operator">Operator</button>
+      <button class="tab-btn" data-tab="debug">Debug</button>
+    </nav>
   </header>
 
-  <!-- MAIN GRID -->
-  <div class="op-grid">
+  <!-- OPERATOR TAB -->
+  <div id="tab-operator" class="tab-panel">
+
+    <!-- MAIN GRID -->
+    <div class="op-grid">
 
     <!-- LEFT: Session info -->
     <aside class="session-panel">
@@ -523,7 +803,6 @@
       </div>
       <div class="session-info">
         <a id="live-url" href="#" target="_blank"></a>
-        <a id="debug-link" href="/listen/debug.html" target="_blank">Open debug page</a>
       </div>
     </aside>
 
@@ -590,8 +869,103 @@
     <button id="pause-btn" disabled>⏸ Pause</button>
   </footer>
 
+  </div><!-- /#tab-operator -->
+
+  <!-- DEBUG TAB -->
+  <div id="tab-debug" class="tab-panel debug-panel" hidden>
+
+    <!-- CONTROLS -->
+    <div class="dbg-controls">
+      <button id="connect-btn">Connect</button>
+      <button id="refresh-session-btn">Refresh Session</button>
+      <button id="mute-btn">Mute</button>
+      <button id="dl-mp3" disabled>↓ MP3</button>
+      <button id="dl-json" disabled>↓ JSON Log</button>
+      <button id="clear-btn">Clear</button>
+      <span id="dbg-status">Not connected</span>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="dbg-content">
+
+      <!-- SUMMARY CARDS -->
+      <div class="dbg-summary">
+        <div class="dbg-card"><div class="dbg-card-label">Chunks</div>       <div class="card-value" id="s-chunks">0</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">Phrases</div>      <div class="card-value" id="s-phrases">0</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">Decode fails</div> <div class="card-value" id="s-fails">0</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">Empty decodes</div><div class="card-value" id="s-empty">0</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">Avg bytes</div>    <div class="card-value" id="s-avgbytes">—</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">Avg dur ms</div>   <div class="card-value" id="s-avgdur">—</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">Total audio s</div><div class="card-value" id="s-totalaudio">0</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">Max sched lag</div><div class="card-value" id="s-maxlag">—</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">Positive lags</div><div class="card-value" id="s-poslags">0</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">WS binary</div>    <div class="card-value" id="s-msg-binary">0</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">WS json/text</div> <div class="card-value" id="s-msg-json">0</div></div>
+        <div class="dbg-card"><div class="dbg-card-label">WS other</div>     <div class="card-value" id="s-msg-other">0</div></div>
+      </div>
+
+      <!-- CURRENT PHRASE -->
+      <div id="phrase-bar">Waiting for phrases…</div>
+
+      <!-- TRANSCRIPT -->
+      <details id="transcript-section" open>
+        <summary>
+          <span>Transcript — <span id="transcript-count">0 phrases</span></span>
+          <span>(only phrases received while connected)</span>
+        </summary>
+        <div class="transcript-actions">
+          <button id="copy-transcript">Copy as text</button>
+          <button id="copy-csv">Copy as CSV</button>
+          <button id="dl-transcript-en" disabled>↓ EN transcript</button>
+          <button id="dl-transcript-de" disabled>↓ DE transcript</button>
+        </div>
+        <div class="transcript-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="str">#</th>
+                <th class="str">DE (raw)</th>
+                <th class="str">DE (clean)</th>
+                <th class="str">EN</th>
+              </tr>
+            </thead>
+            <tbody id="transcript-body"></tbody>
+          </table>
+        </div>
+      </details>
+
+      <!-- CHUNK LOG -->
+      <div class="dbg-section">
+        <div class="dbg-section-label">Chunk Log</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="str">#</th>
+                <th>Arr +ms</th>
+                <th>Gap ms</th>
+                <th>Bytes</th>
+                <th class="str">Decode</th>
+                <th>Dur ms</th>
+                <th>Sched lag ms</th>
+                <th>CtxTime s</th>
+                <th>DecTime ms</th>
+              </tr>
+            </thead>
+            <tbody id="log-body"></tbody>
+          </table>
+          <div class="table-note">
+            Sched lag = audioCtx.currentTime − nextPlayTime at schedule time. Negative = buffer ahead of playback (good). Positive = gap in audio.
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /.dbg-content -->
+  </div><!-- /#tab-debug -->
+
   <script src="config.js"></script>
   <script src="qrcode.min.js"></script>
   <script src="app.js"></script>
+  <script src="debug.js"></script>
 </body>
 </html>
