@@ -17,7 +17,6 @@
   const fileInput      = document.getElementById('file-input');
   const actionBtn      = document.getElementById('action-btn');
   const pauseBtn       = document.getElementById('pause-btn');
-  const debugLinkEl    = document.getElementById('debug-link');
   const sourceLangSelect = document.getElementById('source-lang-select');
   const audioMeter    = document.getElementById('audio-meter');
   const audioMeterBar = document.getElementById('audio-meter-bar');
@@ -216,7 +215,6 @@
       const res = await fetch(backendHttp + '/current-session');
       if (res.ok) {
         const { session_id } = await res.json();
-        debugLinkEl.href = `${backendHttp}/listen/debug.html?session=${session_id}`;
       }
     } catch (_) {}
   })();
@@ -348,7 +346,6 @@
           srcTp.clear();
           tgtTp.clear();
           listenerCount.textContent = '0';
-          debugLinkEl.href = `${backendHttp}/listen/debug.html?session=${msg.session_id}`;
           onOpen(ws);
         } else {
           handleStatusMessage(msg);
@@ -486,4 +483,13 @@
       stopSession = null;
     };
   }
+
+  // ── Tab navigation ─────────────────────────────────────────────────────────
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.id !== 'tab-' + tab; });
+    });
+  });
 })();
