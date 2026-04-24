@@ -7,7 +7,7 @@ log = logging.getLogger("gibberly")
 
 from backend.stt import STTSession
 from backend.llm_translator import LLMTranslator
-from backend.tts import TTSSynthesizer
+from backend.tts import TTSSynthesizer, OpenAITTSSynthesizer
 from backend.pubsub import PubSubPublisher
 from backend.languages import SUPPORTED_LANGUAGES, get_target_languages
 
@@ -30,6 +30,10 @@ class SessionHandler:
         context_window: int = 5,
         loop: Optional[asyncio.AbstractEventLoop] = None,
         on_status: Optional[Callable[[dict], Awaitable[None]]] = None,
+        openai_tts_endpoint: Optional[str] = None,
+        openai_tts_api_key: Optional[str] = None,
+        openai_tts_model: str = "gpt-4o-mini-tts",
+        openai_tts_voice: str = "coral",
     ):
         self.session_id = str(uuid.uuid4())
         if loop is None:
@@ -56,10 +60,21 @@ class SessionHandler:
         }
 
         # One TTS synthesizer per language
-        self._tts: dict[str, TTSSynthesizer] = {
-            lang["code"]: TTSSynthesizer(speech_key, speech_region, voice=lang["voice"])
-            for lang in target_languages
-        }
+        if openai_tts_endpoint and openai_tts_api_key:
+            self._tts: dict[str, TTSSynthesizer | OpenAITTSSynthesizer] = {
+                lang["code"]: OpenAITTSSynthesizer(
+                    openai_tts_endpoint,
+                    openai_tts_api_key,
+                    voice=openai_tts_voice,
+                    model=openai_tts_model,
+                )
+                for lang in target_languages
+            }
+        else:
+            self._tts = {
+                lang["code"]: TTSSynthesizer(speech_key, speech_region, voice=lang["voice"])
+                for lang in target_languages
+            }
 
         self._llm_translator = LLMTranslator(
             openai_endpoint, openai_api_key, openai_deployment,
@@ -101,6 +116,7 @@ class SessionHandler:
             "en_text": result.get("en_text", ""),
         })
 
+        tone = result.get("tone", "calm")
         loop = asyncio.get_running_loop()
 
         async with self._tts_lock:
@@ -124,7 +140,7 @@ class SessionHandler:
 
                         await loop.run_in_executor(
                             None,
-                            lambda t=text, s=tts, oc=on_chunk: s.synthesize(t, oc),
+                            lambda t=text, s=tts, oc=on_chunk, tn=tone: s.synthesize(t, oc, tone=tn),
                         )
                     except Exception as exc:
                         await self._send_status({"type": "tts_error", "error": str(exc)})

@@ -170,7 +170,7 @@ def test_process_chunk_synthesizes_when_audio_listener_present(mock_pub_class, m
     mock_llm_class.return_value = mock_llm
     mock_llm.translate = AsyncMock(return_value={"clean_src": "Gut", "en_text": "Good"})
 
-    def fake_synthesize(text, on_chunk):
+    def fake_synthesize(text, on_chunk, tone="calm"):
         on_chunk(b"\x01\x02")
 
     mock_tts = MagicMock()
@@ -182,7 +182,8 @@ def test_process_chunk_synthesizes_when_audio_listener_present(mock_pub_class, m
     handler.audio_join("en")  # one audio listener
     loop.run_until_complete(handler._process_chunk("Gut"))
 
-    mock_tts.synthesize.assert_called_once_with("Good", mock_tts.synthesize.call_args[0][1])
+    on_chunk_arg = mock_tts.synthesize.call_args[0][1]
+    mock_tts.synthesize.assert_called_once_with("Good", on_chunk_arg, tone="calm")
     mock_pub.publish_audio.assert_called_once_with(handler.session_id, "en", b"\x01\x02")
     loop.close()
 
