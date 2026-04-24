@@ -1,6 +1,6 @@
 from typing import Callable
 import azure.cognitiveservices.speech as speechsdk
-from openai import AzureOpenAI
+from openai import OpenAI
 
 # Tone → natural-language voice instruction for gpt-4o-mini-tts.
 # Uses OpenAI's `instructions` parameter — SSML is not supported by this model.
@@ -62,10 +62,9 @@ class OpenAITTSSynthesizer:
         voice: str = "coral",
         model: str = "gpt-4o-mini-tts",
     ):
-        self._client = AzureOpenAI(
-            azure_endpoint=endpoint,
+        self._client = OpenAI(
             api_key=api_key,
-            api_version="v1",
+            base_url=endpoint.rstrip("/") + "/openai/v1",
         )
         self._voice = voice
         self._model = model

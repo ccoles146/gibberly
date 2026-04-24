@@ -97,7 +97,7 @@ def test_synthesize_uses_custom_voice(mock_config, mock_synth_class):
 
 # ── OpenAITTSSynthesizer ────────────────────────────────────────────────────
 
-@patch("backend.tts.AzureOpenAI")
+@patch("backend.tts.OpenAI")
 def test_openai_tts_synthesize_returns_audio(mock_client_class):
     """Audio bytes from the API response are passed to the callback."""
     audio_bytes = b"\xff\xfb" + b"\x00" * 200
@@ -113,7 +113,7 @@ def test_openai_tts_synthesize_returns_audio(mock_client_class):
     assert received == [audio_bytes]
 
 
-@patch("backend.tts.AzureOpenAI")
+@patch("backend.tts.OpenAI")
 def test_openai_tts_passes_tone_as_instructions(mock_client_class):
     """The tone argument is mapped to a non-empty instructions string."""
     mock_client = MagicMock()
@@ -129,7 +129,7 @@ def test_openai_tts_passes_tone_as_instructions(mock_client_class):
     assert len(call_kwargs["instructions"]) > 10
 
 
-@patch("backend.tts.AzureOpenAI")
+@patch("backend.tts.OpenAI")
 def test_openai_tts_uses_configurable_model(mock_client_class):
     """The model name is taken from the constructor argument, not hardcoded."""
     mock_client = MagicMock()
