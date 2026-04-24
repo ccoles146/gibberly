@@ -93,3 +93,52 @@ def test_synthesize_uses_custom_voice(mock_config, mock_synth_class):
     TTSSynthesizer("key", "westeurope", voice="es-ES-ElviraNeural")
 
     assert mock_config_instance.speech_synthesis_voice_name == "es-ES-ElviraNeural"
+
+
+# ── OpenAITTSSynthesizer ────────────────────────────────────────────────────
+
+@patch("backend.tts.AzureOpenAI")
+def test_openai_tts_synthesize_returns_audio(mock_client_class):
+    """Audio bytes from the API response are passed to the callback."""
+    audio_bytes = b"\xff\xfb" + b"\x00" * 200
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_client.audio.speech.create.return_value.content = audio_bytes
+
+    from backend.tts import OpenAITTSSynthesizer
+    synth = OpenAITTSSynthesizer("https://ep.openai.azure.com/", "key")
+    received = []
+    synth.synthesize("God loves you", received.append)
+
+    assert received == [audio_bytes]
+
+
+@patch("backend.tts.AzureOpenAI")
+def test_openai_tts_passes_tone_as_instructions(mock_client_class):
+    """The tone argument is mapped to a non-empty instructions string."""
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_client.audio.speech.create.return_value.content = b"\x00"
+
+    from backend.tts import OpenAITTSSynthesizer
+    synth = OpenAITTSSynthesizer("https://ep.openai.azure.com/", "key")
+    synth.synthesize("Hallelujah", lambda _: None, tone="joyful")
+
+    call_kwargs = mock_client.audio.speech.create.call_args.kwargs
+    assert call_kwargs["model"] == "gpt-4o-mini-tts"
+    assert len(call_kwargs["instructions"]) > 10
+
+
+@patch("backend.tts.AzureOpenAI")
+def test_openai_tts_uses_configurable_model(mock_client_class):
+    """The model name is taken from the constructor argument, not hardcoded."""
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_client.audio.speech.create.return_value.content = b"\x00"
+
+    from backend.tts import OpenAITTSSynthesizer
+    synth = OpenAITTSSynthesizer("https://ep.openai.azure.com/", "key", model="gpt-4o-tts")
+    synth.synthesize("Test", lambda _: None)
+
+    call_kwargs = mock_client.audio.speech.create.call_args.kwargs
+    assert call_kwargs["model"] == "gpt-4o-tts"
