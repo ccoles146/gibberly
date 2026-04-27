@@ -1,12 +1,13 @@
 import asyncio
 import logging
+import time
 import uuid
 from typing import Awaitable, Callable, Optional
 
-log = logging.getLogger("gibberly")
+log = logging.getLogger("gibberly.session")
 
 from backend.stt import STTSession
-from backend.llm_translator import LLMTranslator
+from backend.llm_translator import LLMTranslator, ContentFilterError
 from backend.tts import TTSSynthesizer, OpenAITTSSynthesizer
 from backend.pubsub import PubSubPublisher
 from backend.languages import SUPPORTED_LANGUAGES, get_target_languages
@@ -46,6 +47,9 @@ class SessionHandler:
         self.source_lang = source_lang
         self._target_languages = target_languages
         self._tts_lock = asyncio.Lock()
+        self._chunk_count = 0
+        self._start_time = time.monotonic()
+        self._stopped = False
 
         self.listener_count: dict[str, int] = {}
         self.audio_active_count: dict[str, int] = {}
@@ -70,11 +74,16 @@ class SessionHandler:
                 )
                 for lang in target_languages
             }
+            log.info(
+                "Session %s — TTS: OpenAI (model=%s voice=%s)",
+                self.session_id, openai_tts_model, openai_tts_voice,
+            )
         else:
             self._tts = {
                 lang["code"]: TTSSynthesizer(speech_key, speech_region, voice=lang["voice"])
                 for lang in target_languages
             }
+            log.info("Session %s — TTS: Azure Speech", self.session_id)
 
         self._llm_translator = LLMTranslator(
             openai_endpoint, openai_api_key, openai_deployment,
@@ -89,6 +98,12 @@ class SessionHandler:
             time_cap_s=time_cap_s,
             language=source_lang,
         )
+        log.info(
+            "Session %s created — source=%s targets=%s",
+            self.session_id,
+            source_lang,
+            [l["code"] for l in target_languages],
+        )
 
     def _on_text(self, raw_src: str) -> None:
         """Called from STTSession thread — bridge to asyncio."""
@@ -97,16 +112,41 @@ class SessionHandler:
         )
 
     async def _process_chunk(self, raw_src: str) -> None:
-        if self.paused:
+        if self._stopped or self.paused:
+            log.debug(
+                "Session %s — chunk ignored (%s): %r",
+                self.session_id, "stopped" if self._stopped else "paused", raw_src[:40],
+            )
             return
+
+        self._chunk_count += 1
+        chunk_num = self._chunk_count
+        t0 = time.monotonic()
+        log.debug("Session %s — chunk #%d begin: %r", self.session_id, chunk_num, raw_src[:60])
+
         try:
             result = await self._llm_translator.translate(raw_src)
             clean_src = result["clean_src"]
-        except Exception:
+        except ContentFilterError as exc:
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            log.warning(
+                "Session %s — chunk #%d skipped by content filter after %.0fms (%s). "
+                "Context cleared — next chunk will process cleanly.",
+                self.session_id, chunk_num, elapsed_ms, exc,
+            )
+            await self._send_status({"type": "content_filter_skip", "chunk": raw_src})
+            return
+        except Exception as exc:
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            log.error(
+                "Session %s — chunk #%d LLM failed after %.0fms, falling back: %s",
+                self.session_id, chunk_num, elapsed_ms, exc,
+            )
             await self._send_status({"type": "llm_fallback", "chunk": raw_src})
             return
 
         if not clean_src:
+            log.debug("Session %s — chunk #%d filtered to empty by LLM", self.session_id, chunk_num)
             return
 
         await self._send_status({
@@ -123,16 +163,27 @@ class SessionHandler:
             for lang in self._target_languages:
                 text = result.get(lang["llm_key"], "")
                 if not text:
+                    log.debug(
+                        "Session %s — chunk #%d no translation for lang=%s",
+                        self.session_id, chunk_num, lang["code"],
+                    )
                     continue
 
-                await loop.run_in_executor(
-                    None,
-                    lambda lc=lang["code"], cs=clean_src, t=text: (
-                        self._publisher.publish_phrase(self.session_id, lc, cs, t)
-                    ),
-                )
+                try:
+                    await loop.run_in_executor(
+                        None,
+                        lambda lc=lang["code"], cs=clean_src, t=text: (
+                            self._publisher.publish_phrase(self.session_id, lc, cs, t)
+                        ),
+                    )
+                except Exception as exc:
+                    log.error(
+                        "Session %s — chunk #%d phrase publish failed lang=%s: %s",
+                        self.session_id, chunk_num, lang["code"], exc,
+                    )
 
-                if self.audio_active_count.get(lang["code"], 0) > 0:
+                audio_listeners = self.audio_active_count.get(lang["code"], 0)
+                if audio_listeners > 0:
                     tts = self._tts[lang["code"]]
                     try:
                         def on_chunk(audio_bytes: bytes, lc=lang["code"]) -> None:
@@ -143,7 +194,19 @@ class SessionHandler:
                             lambda t=text, s=tts, oc=on_chunk, tn=tone: s.synthesize(t, oc, tone=tn),
                         )
                     except Exception as exc:
+                        log.error(
+                            "Session %s — chunk #%d TTS failed lang=%s tone=%s: %s",
+                            self.session_id, chunk_num, lang["code"], tone, exc,
+                        )
                         await self._send_status({"type": "tts_error", "error": str(exc)})
+                else:
+                    log.debug(
+                        "Session %s — chunk #%d TTS skipped lang=%s (no audio listeners)",
+                        self.session_id, chunk_num, lang["code"],
+                    )
+
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        log.debug("Session %s — chunk #%d done in %.0fms", self.session_id, chunk_num, elapsed_ms)
 
     async def _send_status(self, msg: dict) -> None:
         if self._on_status:
@@ -153,6 +216,7 @@ class SessionHandler:
                 pass
 
     async def pause(self) -> None:
+        log.info("Session %s — pausing", self.session_id)
         self.paused = True
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._stt.pause_recognition)
@@ -162,6 +226,7 @@ class SessionHandler:
         await self._send_status({"type": "paused"})
 
     async def resume(self) -> None:
+        log.info("Session %s — resuming", self.session_id)
         self.paused = False
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._stt.resume_recognition)
@@ -173,6 +238,10 @@ class SessionHandler:
     def listener_join(self, lang: str) -> int:
         self.listener_count[lang] = self.listener_count.get(lang, 0) + 1
         total = sum(self.listener_count.values())
+        log.info(
+            "Session %s — listener joined lang=%s count=%d total=%d",
+            self.session_id, lang, self.listener_count[lang], total,
+        )
         asyncio.run_coroutine_threadsafe(
             self._send_status({"type": "listeners", "count": total}),
             self._loop,
@@ -183,6 +252,10 @@ class SessionHandler:
         self.listener_count[lang] = max(0, self.listener_count.get(lang, 0) - 1)
         self.audio_active_count[lang] = max(0, self.audio_active_count.get(lang, 0) - 1)
         total = sum(self.listener_count.values())
+        log.info(
+            "Session %s — listener left lang=%s count=%d total=%d",
+            self.session_id, lang, self.listener_count[lang], total,
+        )
         asyncio.run_coroutine_threadsafe(
             self._send_status({"type": "listeners", "count": total}),
             self._loop,
@@ -191,10 +264,18 @@ class SessionHandler:
 
     def audio_join(self, lang: str) -> int:
         self.audio_active_count[lang] = self.audio_active_count.get(lang, 0) + 1
+        log.info(
+            "Session %s — audio unmuted lang=%s active_audio_listeners=%d",
+            self.session_id, lang, self.audio_active_count[lang],
+        )
         return self.audio_active_count[lang]
 
     def audio_leave(self, lang: str) -> int:
         self.audio_active_count[lang] = max(0, self.audio_active_count.get(lang, 0) - 1)
+        log.info(
+            "Session %s — audio muted lang=%s active_audio_listeners=%d",
+            self.session_id, lang, self.audio_active_count[lang],
+        )
         return self.audio_active_count[lang]
 
     def start(self) -> None:
@@ -204,8 +285,15 @@ class SessionHandler:
         self._stt.write(audio_bytes)
 
     def stop(self) -> None:
+        self._stopped = True
+        elapsed_s = time.monotonic() - self._start_time
+        log.info(
+            "Session %s stopping — duration=%.0fs chunks=%d listeners=%s",
+            self.session_id, elapsed_s, self._chunk_count,
+            dict(self.listener_count),
+        )
         self._stt.stop()
         try:
             self._publisher.send_close(self.session_id)
         except Exception as exc:
-            log.warning("send_close failed (ignored): %s", exc)
+            log.warning("Session %s — send_close failed (ignored): %s", self.session_id, exc)

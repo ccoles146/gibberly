@@ -1,11 +1,14 @@
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("gibberly")
+from backend.logging_config import configure_logging
+configure_logging()
+
+log = logging.getLogger("gibberly.ws")
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +29,9 @@ app.state.active_ws: Optional[WebSocket] = None
 
 LISTENER_DIR = Path(__file__).parent.parent / "listener"
 _VALID_SOURCE_LANGS = {"de-DE", "en-US"}
+
+# Warn if no audio bytes received for this many seconds while not paused
+_AUDIO_SILENCE_WARN_S = 10
 
 
 @app.get("/health")
@@ -78,10 +84,13 @@ def session_info(session_id: str):
 def negotiate(session: str, lang: str = "en"):
     handler = app.state.sessions.get(session)
     if not handler:
+        log.warning("Negotiate request for unknown session=%s lang=%s", session, lang)
         raise HTTPException(status_code=404, detail="Session not found")
     token = handler.listener_tokens.get(lang)
     if not token:
+        log.warning("Negotiate: no token for session=%s lang=%s", session, lang)
         raise HTTPException(status_code=404, detail="Language not available for this session")
+    log.info("Negotiate token served — session=%s lang=%s", session, lang)
     return {"url": token}
 
 
@@ -103,6 +112,7 @@ def live_redirect():
 def listener_join(session_id: str, lang: str = "en"):
     handler = app.state.sessions.get(session_id)
     if not handler:
+        log.warning("listener_join: session not found session=%s lang=%s", session_id, lang)
         raise HTTPException(status_code=404, detail="Session not found")
     return {"count": handler.listener_join(lang)}
 
@@ -134,13 +144,16 @@ def audio_leave(session_id: str, lang: str = "en"):
 @app.websocket("/ws/stream")
 async def stream(websocket: WebSocket, source_lang: str = "de-DE", tts_voice: str = ""):
     await websocket.accept()
+    client_addr = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"
+    log.info("Operator WebSocket connected from %s source_lang=%s", client_addr, source_lang)
 
     if source_lang not in _VALID_SOURCE_LANGS:
+        log.warning("Invalid source_lang=%r — defaulting to de-DE", source_lang)
         source_lang = "de-DE"
 
     old_ws = app.state.active_ws
     if old_ws is not None and old_ws.client_state != WebSocketState.DISCONNECTED:
-        log.warning("Stale WebSocket detected — closing before starting new session")
+        log.warning("Stale operator WebSocket detected — closing before starting new session")
         try:
             await old_ws.close(code=1001)
         except Exception:
@@ -148,7 +161,7 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE", tts_voice: st
 
     old_sid = app.state.current_session_id
     if old_sid:
-        log.warning("Stopping orphaned session %s", old_sid)
+        log.warning("Orphaned session %s found — stopping before new session", old_sid)
         old_handler = app.state.sessions.pop(old_sid, None)
         app.state.current_session_id = None
         if old_handler:
@@ -203,6 +216,14 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE", tts_voice: st
         ),
     })
 
+    # ── Silence detection state ───────────────────────────────────────────────
+    audio_state = {
+        "last_bytes_at": time.monotonic(),
+        "warned": False,
+        "total_bytes": 0,
+        "total_packets": 0,
+    }
+
     async def _keepalive() -> None:
         """Sends periodic pings from server → operator to prevent Azure infra idle-close."""
         while True:
@@ -212,7 +233,28 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE", tts_voice: st
             except Exception:
                 return
 
-    keepalive_task = asyncio.create_task(_keepalive())
+    async def _silence_watchdog() -> None:
+        """Warns when audio bytes stop arriving while the session is not paused."""
+        while True:
+            await asyncio.sleep(10)
+            if not handler.paused:
+                gap = time.monotonic() - audio_state["last_bytes_at"]
+                if gap > _AUDIO_SILENCE_WARN_S:
+                    if not audio_state["warned"]:
+                        log.warning(
+                            "Session %s — no audio received for %.0fs while running. "
+                            "Console network stalled? Total received: %d bytes in %d packets.",
+                            handler.session_id, gap,
+                            audio_state["total_bytes"], audio_state["total_packets"],
+                        )
+                        audio_state["warned"] = True
+                else:
+                    if audio_state["warned"]:
+                        log.info(
+                            "Session %s — audio resumed after silence gap (total=%d bytes)",
+                            handler.session_id, audio_state["total_bytes"],
+                        )
+                    audio_state["warned"] = False
 
     async def _receive_loop() -> None:
         while True:
@@ -220,11 +262,17 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE", tts_voice: st
             raw_bytes = data.get("bytes")
             raw_text = data.get("text")
             if raw_bytes:
+                audio_state["last_bytes_at"] = time.monotonic()
+                audio_state["total_bytes"] += len(raw_bytes)
+                audio_state["total_packets"] += 1
                 if not handler.paused:
                     try:
                         handler.write(raw_bytes)
                     except Exception as exc:
-                        log.warning("Session %s — audio write failed (ignored): %s", handler.session_id, exc)
+                        log.warning(
+                            "Session %s — audio write failed (ignored): %s",
+                            handler.session_id, exc,
+                        )
             elif raw_text:
                 try:
                     msg = json.loads(raw_text)
@@ -232,38 +280,72 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE", tts_voice: st
                     pass
                 else:
                     if msg.get("type") == "pause":
+                        log.info("Session %s — pause requested by operator", handler.session_id)
                         await handler.pause()
                     elif msg.get("type") == "resume":
+                        log.info("Session %s — resume requested by operator", handler.session_id)
                         await handler.resume()
                     else:
-                        log.debug("Session %s — unrecognised WS message type: %s", handler.session_id, msg.get("type"))
+                        log.debug(
+                            "Session %s — unrecognised WS message type: %s",
+                            handler.session_id, msg.get("type"),
+                        )
+
+    keepalive_task = asyncio.create_task(_keepalive())
+    silence_task = asyncio.create_task(_silence_watchdog())
 
     try:
         await asyncio.wait_for(_receive_loop(), timeout=settings.session_timeout_s)
     except asyncio.TimeoutError:
         log.warning(
-            "Session %s timed out after %ds",
+            "Session %s timed out after %ds — closing operator WebSocket",
             handler.session_id, settings.session_timeout_s,
         )
         try:
             await websocket.close(code=1001)
         except Exception:
             pass
-    except WebSocketDisconnect:
-        log.info("Session %s — operator disconnected", handler.session_id)
+    except WebSocketDisconnect as exc:
+        log.info(
+            "Session %s — operator disconnected (code=%s reason=%r) "
+            "total_audio=%d bytes in %d packets",
+            handler.session_id,
+            getattr(exc, "code", "?"),
+            getattr(exc, "reason", ""),
+            audio_state["total_bytes"],
+            audio_state["total_packets"],
+        )
+    except RuntimeError as exc:
+        # Starlette raises RuntimeError("Cannot call 'receive' once a disconnect message has
+        # been received.") when the client drops without a clean WS close frame.
+        msg = str(exc)
+        if "disconnect" in msg.lower() or "receive" in msg.lower():
+            log.info(
+                "Session %s — operator disconnected (abrupt close) "
+                "total_audio=%d bytes in %d packets",
+                handler.session_id,
+                audio_state["total_bytes"],
+                audio_state["total_packets"],
+            )
+        else:
+            log.error("Session %s — unexpected runtime error: %s", handler.session_id, exc)
     except Exception as exc:
-        log.error("Session %s — unexpected error: %s", handler.session_id, exc)
+        log.error("Session %s — unexpected WebSocket error: %s", handler.session_id, exc)
     finally:
         keepalive_task.cancel()
+        silence_task.cancel()
         app.state.sessions.pop(handler.session_id, None)
         if app.state.current_session_id == handler.session_id:
             app.state.current_session_id = None
         if app.state.active_ws is websocket:
             app.state.active_ws = None
-        log.info("Session %s stopping…", handler.session_id)
+        log.info(
+            "Session %s stopping — audio_total=%d bytes %d packets",
+            handler.session_id, audio_state["total_bytes"], audio_state["total_packets"],
+        )
         try:
             await loop.run_in_executor(None, handler.stop)
-            log.info("Session %s stopped", handler.session_id)
+            log.info("Session %s stopped cleanly", handler.session_id)
         except Exception as exc:
             log.error("Session %s stop error: %s", handler.session_id, exc)
 

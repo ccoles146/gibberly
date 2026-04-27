@@ -1,9 +1,10 @@
 import logging
 import threading
+import time
 from typing import Callable, Optional
 import azure.cognitiveservices.speech as speechsdk
 
-log = logging.getLogger("gibberly")
+log = logging.getLogger("gibberly.stt")
 
 
 class STTSession:
@@ -54,6 +55,8 @@ class STTSession:
         self._total_dispatched = ""
         self._cap_timer: Optional[threading.Timer] = None
         self._running = False
+        self._reconnect_attempts = 0
+        self._session_start_time: Optional[float] = None
 
         self._push_stream = speechsdk.audio.PushAudioInputStream()
         self._recognizer = self._build_recognizer()
@@ -73,6 +76,7 @@ class STTSession:
         recognizer = speechsdk.SpeechRecognizer(
             speech_config=config, audio_config=audio_config
         )
+        recognizer.session_started.connect(self._on_session_started)
         recognizer.recognizing.connect(self._on_recognizing)
         recognizer.recognized.connect(self._on_recognized)
         recognizer.canceled.connect(self._on_canceled)
@@ -105,6 +109,15 @@ class STTSession:
 
     # ── SDK event callbacks ───────────────────────────────────────────────────
 
+    def _on_session_started(self, evt) -> None:
+        self._session_start_time = time.monotonic()
+        log.info(
+            "Azure STT session established — language=%s silence_timeout=%dms cap=%.1fs",
+            self._language,
+            self._silence_timeout_ms,
+            self._time_cap_s,
+        )
+
     def _on_recognizing(self, evt) -> None:
         with self._lock:
             self._interim_text = evt.result.text
@@ -112,6 +125,7 @@ class STTSession:
                 self._cap_timer = threading.Timer(self._time_cap_s, self._on_cap_timeout)
                 self._cap_timer.daemon = True
                 self._cap_timer.start()
+                log.debug("STT cap timer started (%.1fs) — interim: %r", self._time_cap_s, evt.result.text[:60])
 
     def _on_cap_timeout(self) -> None:
         with self._lock:
@@ -122,10 +136,13 @@ class STTSession:
                 self._total_dispatched = full_interim
             self._cap_timer = None
         if new_part:
+            log.debug("STT cap dispatch (%d words): %r", len(new_part.split()), new_part[:80])
             self._on_text(new_part)
 
     def _on_recognized(self, evt) -> None:
         if evt.result.reason != speechsdk.ResultReason.RecognizedSpeech:
+            if evt.result.reason == speechsdk.ResultReason.NoMatch:
+                log.debug("STT no-match — NoSpeech or low confidence")
             return
         with self._lock:
             if self._cap_timer is not None:
@@ -137,44 +154,55 @@ class STTSession:
 
         text = self._tail_after_dispatched(evt.result.text, already_sent)
         if text:
+            log.info("STT recognized (%d words): %r", len(text.split()), text[:100])
             self._on_text(text)
+        else:
+            log.debug("STT recognized but fully covered by cap dispatch — skipping")
 
     def _on_canceled(self, evt) -> None:
         details = evt.cancellation_details
-        log.warning(
-            "STT canceled — reason: %s, code: %s, details: %s",
-            details.reason, details.error_code, details.error_details,
-        )
-        # Reconnect on service/network errors only.
-        # EndOfStream fires on normal stop (stop_continuous_recognition / stream close) — don't reconnect.
-        if details.reason == speechsdk.CancellationReason.Error and self._running:
-            log.info("STT error cancellation — scheduling reconnect in 1 s")
-            t = threading.Timer(1.0, self._reconnect)
-            t.daemon = True
-            t.start()
+        reason_name = details.reason.name if hasattr(details.reason, "name") else str(details.reason)
+        code_name = details.error_code.name if hasattr(details.error_code, "name") else str(details.error_code)
+
+        if details.reason == speechsdk.CancellationReason.Error:
+            log.error(
+                "STT canceled — reason=%s code=%s details=%s",
+                reason_name, code_name, details.error_details,
+            )
+            if self._running:
+                log.info("STT scheduling reconnect in 1s (attempt %d)", self._reconnect_attempts + 1)
+                t = threading.Timer(1.0, self._reconnect)
+                t.daemon = True
+                t.start()
+        else:
+            # EndOfStream on normal stop — not an error
+            log.info("STT canceled (normal) — reason=%s", reason_name)
 
     def _on_session_stopped(self, evt) -> None:
-        # Fires on both explicit stop (pause / stop) and unexpected stops.
-        # Do NOT reconnect here — pause_recognition calls stop_continuous_recognition_async,
-        # which also fires this event with _running=True. Reconnection is handled exclusively
-        # by _on_canceled for genuine error cases.
-        log.info("STT session stopped (running=%s)", self._running)
+        elapsed = ""
+        if self._session_start_time is not None:
+            secs = time.monotonic() - self._session_start_time
+            elapsed = f" after {secs:.0f}s"
+        log.info("STT session stopped%s (running=%s)", elapsed, self._running)
 
     def _reconnect(self) -> None:
         with self._lock:
             if not self._running:
                 return
-        log.info("STT reconnecting (language=%s)…", self._language)
+        self._reconnect_attempts += 1
+        log.info("STT reconnecting (language=%s attempt=%d)…", self._language, self._reconnect_attempts)
+        t0 = time.monotonic()
         try:
             self._recognizer.start_continuous_recognition()
-            log.info("STT reconnected successfully")
+            log.info("STT reconnected successfully in %.0fms", (time.monotonic() - t0) * 1000)
         except Exception as exc:
-            log.error("STT reconnect failed: %s", exc)
+            log.error("STT reconnect failed (attempt=%d): %s", self._reconnect_attempts, exc)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
     def start(self) -> None:
         self._running = True
+        log.info("STT starting continuous recognition (language=%s)", self._language)
         self._recognizer.start_continuous_recognition()
 
     def write(self, audio_bytes: bytes) -> None:
@@ -186,13 +214,16 @@ class STTSession:
             if self._cap_timer is not None:
                 self._cap_timer.cancel()
                 self._cap_timer = None
+        log.info("STT stopping")
         try:
             self._recognizer.stop_continuous_recognition_async().get()
         except Exception:
             pass
         self._push_stream.close()
+        log.info("STT stopped (total reconnects=%d)", self._reconnect_attempts)
 
     def pause_recognition(self) -> None:
+        log.info("STT pausing recognition")
         with self._lock:
             if self._cap_timer is not None:
                 self._cap_timer.cancel()
@@ -205,6 +236,7 @@ class STTSession:
             pass
 
     def resume_recognition(self) -> None:
+        log.info("STT resuming recognition")
         with self._lock:
             self._interim_text = ""
             self._total_dispatched = ""

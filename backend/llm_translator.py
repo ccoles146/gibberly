@@ -1,9 +1,23 @@
 import json
+import logging
+import time
 from collections import deque
 
+import openai
 from openai import AsyncAzureOpenAI
 
+log = logging.getLogger("gibberly.llm")
+
 _VALID_TONES = {"calm", "warm", "urgent", "emphatic", "joyful", "solemn", "questioning"}
+
+
+class ContentFilterError(Exception):
+    """Azure OpenAI content policy blocked this chunk.
+
+    The context window has already been cleared by the time this is raised,
+    so the next call will not carry the triggering content forward.
+    """
+    pass
 
 
 def _build_system_prompt(target_languages: list[dict]) -> str:
@@ -76,6 +90,7 @@ class LLMTranslator:
         self._system_prompt = _build_system_prompt(target_languages)
         self._context: deque[tuple[str, str]] = deque(maxlen=context_window)
         self._pending: str = ""
+        self._call_count = 0
 
         # Reference language key for context storage (prefer English)
         ref_keys = [lang["llm_key"] for lang in target_languages if lang["code"] == "en"]
@@ -97,22 +112,80 @@ class LLMTranslator:
 
     async def translate(self, raw: str) -> dict:
         if not raw.strip():
+            log.debug("LLM skipping empty/whitespace chunk")
             result = {"clean_src": "", "tone": "calm"}
             for lang in self._target_languages:
                 result[lang["llm_key"]] = ""
             return result
 
-        response = await self._client.chat.completions.create(
-            model=self._deployment,
-            messages=[
-                {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": self._build_user_message(raw)},
-            ],
-            temperature=0,
-            max_tokens=max(512, len(raw.split()) * 12 * len(self._target_languages)),
-            response_format={"type": "json_object"},
-            timeout=5.0,
+        self._call_count += 1
+        call_num = self._call_count
+        word_count = len(raw.split())
+        ctx_size = len(self._context)
+        log.info(
+            "LLM call #%d — %d words, ctx=%d/%d%s",
+            call_num, word_count, ctx_size, self._context.maxlen,
+            f", pending={self._pending!r}" if self._pending else "",
         )
+
+        t0 = time.monotonic()
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._deployment,
+                messages=[
+                    {"role": "system", "content": self._system_prompt},
+                    {"role": "user", "content": self._build_user_message(raw)},
+                ],
+                temperature=0,
+                max_tokens=max(512, len(raw.split()) * 12 * len(self._target_languages)),
+                response_format={"type": "json_object"},
+                timeout=5.0,
+            )
+        except openai.BadRequestError as exc:
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            # Detect Azure content filter blocks — distinct from API errors
+            body = exc.body or {}
+            err = body.get("error", {}) if isinstance(body, dict) else {}
+            if err.get("code") == "content_filter":
+                inner = err.get("innererror", {}).get("content_filter_result", {})
+                triggered = [
+                    f"{cat}({v.get('severity','?')})"
+                    for cat, v in inner.items()
+                    if isinstance(v, dict) and v.get("filtered")
+                ]
+                ctx_before = len(self._context)
+                self._context.clear()
+                self._pending = ""
+                log.warning(
+                    "LLM call #%d content filter blocked after %.0fms — "
+                    "categories=%s. Cleared context (%d entries) and pending to prevent "
+                    "persistent filtering on subsequent chunks.",
+                    call_num, elapsed_ms, triggered, ctx_before,
+                )
+                raise ContentFilterError(f"content_filter: {triggered}") from exc
+            log.error("LLM call #%d bad request after %.0fms: %s", call_num, elapsed_ms, exc)
+            raise
+        except Exception as exc:
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            log.error("LLM call #%d failed after %.0fms: %s", call_num, elapsed_ms, exc)
+            raise
+
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        usage = response.usage
+        if usage:
+            log.info(
+                "LLM call #%d — %.0fms | prompt=%d completion=%d total=%d tokens",
+                call_num, elapsed_ms,
+                usage.prompt_tokens, usage.completion_tokens, usage.total_tokens,
+            )
+        else:
+            log.info("LLM call #%d — %.0fms (no usage info)", call_num, elapsed_ms)
+
+        if elapsed_ms > 3000:
+            log.warning(
+                "LLM call #%d slow — %.0fms. This may cause a visible text delay for listeners.",
+                call_num, elapsed_ms,
+            )
 
         content = response.choices[0].message.content
         if not content:
@@ -121,8 +194,13 @@ class LLMTranslator:
         clean_src = parsed.get("clean_src", "")
         self._pending = parsed.get("pending", "")
 
+        if not clean_src:
+            log.info("LLM call #%d — chunk filtered to empty (filler/false start)", call_num)
+
         raw_tone = parsed.get("tone", "calm")
         tone = raw_tone if raw_tone in _VALID_TONES else "calm"
+        if raw_tone not in _VALID_TONES:
+            log.warning("LLM call #%d — unknown tone %r, defaulting to calm", call_num, raw_tone)
 
         result = {"clean_src": clean_src, "tone": tone}
         for lang in self._target_languages:
