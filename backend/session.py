@@ -55,6 +55,9 @@ class SessionHandler:
         self.audio_active_count: dict[str, int] = {}
         self.paused: bool = False
 
+        self._chunk_queue: asyncio.Queue[str] = asyncio.Queue()
+        self._drain_task: Optional[asyncio.Task] = None
+
         self._publisher = PubSubPublisher(pubsub_cs)
 
         # One listener token per language
@@ -107,9 +110,18 @@ class SessionHandler:
 
     def _on_text(self, raw_src: str) -> None:
         """Called from STTSession thread — bridge to asyncio."""
-        asyncio.run_coroutine_threadsafe(
-            self._process_chunk(raw_src), self._loop
-        )
+        self._loop.call_soon_threadsafe(self._chunk_queue.put_nowait, raw_src)
+
+    async def _drain_chunks(self) -> None:
+        """Single consumer coroutine — serialises LLM calls so context is always coherent."""
+        try:
+            while True:
+                raw_src = await self._chunk_queue.get()
+                if self._stopped:
+                    break
+                await self._process_chunk(raw_src)
+        except asyncio.CancelledError:
+            pass
 
     async def _process_chunk(self, raw_src: str) -> None:
         if self._stopped or self.paused:
@@ -279,6 +291,7 @@ class SessionHandler:
         return self.audio_active_count[lang]
 
     def start(self) -> None:
+        self._drain_task = self._loop.create_task(self._drain_chunks())
         self._stt.start()
 
     def write(self, audio_bytes: bytes) -> None:
@@ -292,6 +305,8 @@ class SessionHandler:
             self.session_id, elapsed_s, self._chunk_count,
             dict(self.listener_count),
         )
+        if self._drain_task is not None:
+            self._loop.call_soon_threadsafe(self._drain_task.cancel)
         self._stt.stop()
         try:
             self._publisher.send_close(self.session_id)

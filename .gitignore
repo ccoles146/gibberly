@@ -8,3 +8,7 @@ build/
 .pytest_cache/
 .worktrees/
 *.wav
+caddy-linux
+caddy-mac
+caddy-win.exe
+regional-errors.csv

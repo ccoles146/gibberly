@@ -146,6 +146,25 @@
     #connect-btn.stop:hover         { background: rgba(232,84,84,0.08); border-color: var(--red); }
     #connect-btn:disabled           { opacity: 0.35; cursor: default; }
 
+    #reconnect-btn {
+      width: 34px;
+      height: 34px;
+      background: transparent;
+      border: 1px solid var(--border-mid);
+      color: var(--text-soft);
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      font-size: 18px;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      line-height: 1;
+    }
+    #reconnect-btn:hover { border-color: var(--amber); color: var(--amber); }
+    #reconnect-btn:disabled { opacity: 0.35; cursor: default; }
+
     /* ── STATUS ──────────────────────────────────────────────────────── */
     #status {
       text-align: center;
@@ -199,33 +218,42 @@
       display: flex;
       align-items: stretch;
       justify-content: center;
-      padding: 20px 22px 16px;
+      padding: 0 22px 16px;
       overflow: hidden;
       min-height: 0;
+      position: relative;
     }
 
-    /* overflow:hidden + justify-content:flex-end keeps newest lines pinned
-       to the bottom; old content overflows upward and is clipped + masked */
+    /* Top fade hints that content continues above when scrolled */
+    #reading-pane-wrapper::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 48px;
+      background: linear-gradient(to bottom, var(--bg) 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 2;
+    }
+
     #reading-pane {
       width: 100%;
       max-width: 520px;
-      overflow: hidden;
+      overflow-y: auto;
       display: flex;
       flex-direction: column;
-      justify-content: flex-end;
       min-height: 0;
-      /* Gradient mask fades old lines out at the top */
-      mask-image: linear-gradient(to bottom,
-        transparent 0%,
-        rgba(0,0,0,0.4) 18%,
-        black 38%);
-      -webkit-mask-image: linear-gradient(to bottom,
-        transparent 0%,
-        rgba(0,0,0,0.4) 18%,
-        black 38%);
+      /* hide scrollbar — dragging on mobile is the primary interaction */
+      scrollbar-width: none;
     }
+    #reading-pane::-webkit-scrollbar { display: none; }
 
-    #reading-pane-inner { flex-shrink: 0; }
+    /* margin-top:auto pushes content to the bottom when there's spare space;
+       as content grows past the container it becomes naturally scrollable */
+    #reading-pane-inner {
+      flex-shrink: 0;
+      margin-top: auto;
+      padding-top: 48px; /* clear the top fade */
+    }
 
     .reading-placeholder {
       font-family: var(--serif);
@@ -236,7 +264,6 @@
       padding-bottom: 0.2em;
     }
 
-    /* One DOM element per incoming phrase */
     .reading-line {
       font-family: var(--serif);
       font-size: clamp(28px, 7.5vw, 44px);
@@ -248,12 +275,42 @@
       padding-bottom: 0.12em;
     }
 
+    /* Text size variants applied via body[data-text-size] */
+    [data-text-size="s"] .reading-line { font-size: clamp(18px, 4.5vw, 28px); }
+    [data-text-size="l"] .reading-line { font-size: clamp(38px, 10vw, 58px); }
+
+    /* ── LIVE PILL ───────────────────────────────────────────────────── */
+    #live-pill {
+      display: none;
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(22, 31, 49, 0.9);
+      border: 1px solid var(--border-mid);
+      color: var(--text-soft);
+      font-family: var(--ui);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 7px 20px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.2s, color 0.2s;
+      z-index: 10;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    #live-pill:hover { border-color: var(--teal); color: var(--teal); }
+
     /* ── SPEED ROW ───────────────────────────────────────────────────── */
     #speed-row {
-      display: none; /* JS sets to '' when connected */
+      display: none; /* JS sets to 'flex' when connected */
       align-items: center;
       gap: 12px;
-      padding: 6px 22px 2px;
+      padding: 6px 22px 6px;
       flex-shrink: 0;
       position: relative;
       z-index: 1;
@@ -271,6 +328,7 @@
     #speed-slider {
       flex: 1;
       -webkit-appearance: none;
+      appearance: none;
       height: 2px;
       background: var(--border);
       border-radius: 1px;
@@ -305,67 +363,11 @@
       flex-shrink: 0;
     }
 
-    /* ── TRANSCRIPT PANEL ────────────────────────────────────────────── */
-    .transcript-panel {
-      flex-shrink: 0;
-      max-height: 26vh;
-      overflow-y: auto;
-      border-top: 1px solid var(--border);
-      position: relative;
-      z-index: 1;
-    }
-
-    .transcript-panel::-webkit-scrollbar { width: 3px; }
-    .transcript-panel::-webkit-scrollbar-track { background: transparent; }
-    .transcript-panel::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
-
-    .transcript-hdr {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 22px 4px;
-      position: sticky;
-      top: 0;
-      background: var(--bg);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .transcript-hdr-label {
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--text-dim);
-    }
-
-    .transcript-hdr-count {
-      font-size: 10px;
-      color: var(--text-dim);
-      font-variant-numeric: tabular-nums;
-    }
-
-    #transcript-list {
-      padding: 8px 22px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-    }
-
-    .transcript-phrase {
-      font-family: var(--serif);
-      font-size: clamp(14px, 3.8vw, 18px);
-      color: var(--text-soft);
-      line-height: 1.5;
-      padding: 5px 0;
-      border-bottom: 1px solid var(--border);
-    }
-    .transcript-phrase:last-child { border-bottom: none; }
-
     /* ── MUTE WARNING ─────────────────────────────────────────────────── */
     #mute-warning {
       display: none;
       flex-shrink: 0;
-      margin: 8px 16px;
+      margin: 0 16px 8px;
       padding: 10px 14px;
       background: rgba(245, 158, 11, 0.07);
       border: 1px solid rgba(245, 158, 11, 0.2);
@@ -422,54 +424,81 @@
     .dbg-flag  { color: var(--red); font-weight: bold; }
     .dbg-txt   { color: #4a5e7a; font-size: 10px; }
 
-    /* ── BOTTOM NAV BAR ──────────────────────────────────────────────── */
-    .bottom-bar {
-      position: sticky;
-      bottom: 0;
-      z-index: 200;
+    /* ── CENTER BAR ──────────────────────────────────────────────────── */
+    .center-bar {
       flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px 16px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
       background: rgba(9, 12, 20, 0.96);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
       border-top: 1px solid var(--border);
-      padding: 12px 16px;
-      padding-bottom: max(12px, env(safe-area-inset-bottom));
-      display: flex;
-      align-items: center;
-      gap: 10px;
+      position: sticky;
+      bottom: 0;
+      z-index: 200;
     }
 
-    #audio-btn {
-      display: none; /* JS sets to 'block' when connected */
+    #mute-btn {
       flex: 1;
-      padding: 15px 24px;
+      max-width: 180px;
+      padding: 11px 16px;
       background: var(--bg-card);
       border: 1.5px solid var(--border-mid);
       color: var(--text-soft);
       font-family: var(--ui);
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
-      letter-spacing: 0.015em;
+      letter-spacing: 0.01em;
       border-radius: var(--r);
       cursor: pointer;
       transition: all 0.25s;
       text-align: center;
+      white-space: nowrap;
     }
-    #audio-btn:hover {
-      border-color: var(--teal);
-      color: var(--teal);
-    }
-    #audio-btn.active {
+    #mute-btn:hover:not(:disabled) { border-color: var(--teal); color: var(--teal); }
+    #mute-btn.active {
       background: var(--teal-glow);
       border-color: var(--teal);
       color: var(--teal-bright);
-      box-shadow: 0 0 28px rgba(0,200,150,0.16), inset 0 0 24px rgba(0,200,150,0.04);
+      box-shadow: 0 0 20px rgba(0,200,150,0.12), inset 0 0 16px rgba(0,200,150,0.04);
+    }
+    #mute-btn:disabled { opacity: 0.35; cursor: default; }
+
+    .size-btns {
+      display: flex;
+      border: 1px solid var(--border-mid);
+      border-radius: var(--r-sm);
+      overflow: hidden;
+      flex-shrink: 0;
     }
 
+    .size-btn {
+      width: 36px;
+      height: 42px;
+      background: var(--bg-card);
+      border: none;
+      border-right: 1px solid var(--border);
+      color: var(--text-dim);
+      font-family: var(--ui);
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .size-btn:last-child { border-right: none; }
+    .size-btn:hover { background: var(--bg-surface); color: var(--text-soft); }
+    .size-btn.active { background: var(--amber-glow); color: var(--amber); }
+    #size-s { font-size: 11px; }
+    #size-m { font-size: 14px; }
+    #size-l { font-size: 18px; }
+
     #dl-transcript {
+      width: 42px;
+      height: 42px;
       flex-shrink: 0;
-      width: 50px;
-      height: 50px;
       background: var(--bg-card);
       border: 1px solid var(--border);
       color: var(--text-dim);
@@ -479,6 +508,7 @@
       align-items: center;
       justify-content: center;
       transition: all 0.2s;
+      padding: 0;
       font-size: 0;
     }
     #dl-transcript svg { pointer-events: none; }
@@ -487,21 +517,17 @@
 
     /* ── RESPONSIVE ──────────────────────────────────────────────────── */
     @media (min-width: 540px) {
-      #reading-pane-wrapper { padding: 36px 44px 20px; }
-      #speed-row { padding: 10px 32px 4px; }
-      .transcript-hdr { padding: 8px 32px 4px; }
-      #transcript-list { padding: 8px 32px 14px; }
+      #reading-pane-wrapper { padding: 0 44px 20px; }
+      #speed-row { padding: 8px 32px 6px; }
     }
 
     @media (min-width: 768px) {
-      #reading-pane-wrapper { padding: 56px 18% 28px; }
-      #speed-row { padding: 12px 18% 6px; }
-      .transcript-hdr { padding: 10px 18% 6px; }
-      #transcript-list { padding: 10px 18% 20px; }
+      #reading-pane-wrapper { padding: 0 18% 28px; }
+      #speed-row { padding: 10px 18% 8px; }
     }
   </style>
 </head>
-<body>
+<body data-text-size="m">
 
   <!-- HEADER -->
   <header class="app-header">
@@ -511,12 +537,13 @@
     </div>
     <div class="header-right">
       <select id="lang-select"><option value="">Loading…</option></select>
+      <button id="reconnect-btn" title="Reconnect to latest stream">↻</button>
       <button id="connect-btn">Connect</button>
     </div>
   </header>
 
   <!-- STATUS -->
-  <p id="status">Choose a language and connect</p>
+  <p id="status">Connecting…</p>
 
   <!-- MAIN -->
   <main class="translation-stage">
@@ -529,6 +556,7 @@
           <p class="reading-placeholder">Waiting for translation…</p>
         </div>
       </div>
+      <button id="live-pill">↓ Live</button>
     </div>
   </main>
 
@@ -538,15 +566,6 @@
     <input type="range" id="speed-slider" min="0.5" max="1.0" step="0.25" value="1.0">
     <span id="speed-label">1.0×</span>
   </div>
-
-  <!-- TRANSCRIPT -->
-  <section class="transcript-panel">
-    <div class="transcript-hdr">
-      <span class="transcript-hdr-label">Transcript</span>
-      <span class="transcript-hdr-count"><span id="transcript-count">0</span> phrases</span>
-    </div>
-    <div id="transcript-list"></div>
-  </section>
 
   <!-- iOS MUTE WARNING -->
   <div id="mute-warning">
@@ -564,9 +583,14 @@
     <div id="dbg-log"></div>
   </div>
 
-  <!-- BOTTOM BAR -->
-  <nav class="bottom-bar">
-    <button id="audio-btn">🔊 Enable audio</button>
+  <!-- CENTER BAR -->
+  <nav class="center-bar">
+    <button id="mute-btn" disabled>🔊 Enable audio</button>
+    <div class="size-btns" aria-label="Text size">
+      <button id="size-s" class="size-btn" title="Small">S</button>
+      <button id="size-m" class="size-btn active" title="Medium">M</button>
+      <button id="size-l" class="size-btn" title="Large">L</button>
+    </div>
     <button id="dl-transcript" disabled title="Download transcript">
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M9 2v9M5 8l4 4 4-4M2.5 13.5h13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>

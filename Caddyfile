@@ -1,0 +1,17 @@
+{
+	http_port 8081
+	https_port 8443
+	skip_install_trust
+	auto_https off
+}
+
+http://localhost:9000 {
+	# Set the root to the FOLDER, not the file
+	root * operator/
+	file_server
+}
+
+http://localhost:8080 {
+	root * listener/
+	file_server
+}

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -84,6 +85,7 @@ class LLMTranslator:
             azure_endpoint=endpoint,
             api_key=api_key,
             api_version="2024-08-01-preview",
+            max_retries=0,
         )
         self._deployment = deployment
         self._target_languages = target_languages
@@ -128,55 +130,79 @@ class LLMTranslator:
             f", pending={self._pending!r}" if self._pending else "",
         )
 
+        # Retry only APIConnectionError (fast TCP-level drops, ~20ms).
+        # APITimeoutError is never retried — 5s already spent; let session fall back.
+        _MAX_CONN_RETRIES = 2
+        _CONN_RETRY_DELAY_S = 0.5
+
         t0 = time.monotonic()
-        try:
-            response = await self._client.chat.completions.create(
-                model=self._deployment,
-                messages=[
-                    {"role": "system", "content": self._system_prompt},
-                    {"role": "user", "content": self._build_user_message(raw)},
-                ],
-                temperature=0,
-                max_tokens=max(512, len(raw.split()) * 12 * len(self._target_languages)),
-                response_format={"type": "json_object"},
-                timeout=5.0,
-            )
-        except openai.BadRequestError as exc:
-            elapsed_ms = (time.monotonic() - t0) * 1000
-            # Detect Azure content filter blocks — distinct from API errors
-            body = exc.body or {}
-            err = body.get("error", {}) if isinstance(body, dict) else {}
-            if err.get("code") == "content_filter":
-                inner = err.get("innererror", {}).get("content_filter_result", {})
-                triggered = [
-                    f"{cat}({v.get('severity','?')})"
-                    for cat, v in inner.items()
-                    if isinstance(v, dict) and v.get("filtered")
-                ]
-                ctx_before = len(self._context)
-                self._context.clear()
-                self._pending = ""
-                log.warning(
-                    "LLM call #%d content filter blocked after %.0fms — "
-                    "categories=%s. Cleared context (%d entries) and pending to prevent "
-                    "persistent filtering on subsequent chunks.",
-                    call_num, elapsed_ms, triggered, ctx_before,
+        response = None
+        for _attempt in range(_MAX_CONN_RETRIES + 1):
+            try:
+                response = await self._client.chat.completions.create(
+                    model=self._deployment,
+                    messages=[
+                        {"role": "system", "content": self._system_prompt},
+                        {"role": "user", "content": self._build_user_message(raw)},
+                    ],
+                    temperature=0,
+                    max_tokens=max(512, len(raw.split()) * 12 * len(self._target_languages)),
+                    response_format={"type": "json_object"},
+                    timeout=5.0,
                 )
-                raise ContentFilterError(f"content_filter: {triggered}") from exc
-            log.error("LLM call #%d bad request after %.0fms: %s", call_num, elapsed_ms, exc)
-            raise
-        except Exception as exc:
-            elapsed_ms = (time.monotonic() - t0) * 1000
-            log.error("LLM call #%d failed after %.0fms: %s", call_num, elapsed_ms, exc)
-            raise
+                break  # success
+            except openai.BadRequestError as exc:
+                elapsed_ms = (time.monotonic() - t0) * 1000
+                # Detect Azure content filter blocks — distinct from API errors
+                body = exc.body or {}
+                err = body.get("error", {}) if isinstance(body, dict) else {}
+                if err.get("code") == "content_filter":
+                    inner = err.get("innererror", {}).get("content_filter_result", {})
+                    triggered = [
+                        f"{cat}({v.get('severity','?')})"
+                        for cat, v in inner.items()
+                        if isinstance(v, dict) and v.get("filtered")
+                    ]
+                    ctx_before = len(self._context)
+                    self._context.clear()
+                    self._pending = ""
+                    log.warning(
+                        "LLM call #%d content filter blocked after %.0fms — "
+                        "categories=%s. Cleared context (%d entries) and pending to prevent "
+                        "persistent filtering on subsequent chunks.",
+                        call_num, elapsed_ms, triggered, ctx_before,
+                    )
+                    raise ContentFilterError(f"content_filter: {triggered}") from exc
+                log.error("LLM call #%d bad request after %.0fms: %s", call_num, elapsed_ms, exc)
+                raise
+            except openai.APIConnectionError as exc:
+                attempt_ms = (time.monotonic() - t0) * 1000
+                if _attempt < _MAX_CONN_RETRIES:
+                    log.warning(
+                        "LLM call #%d connection error after %.0fms (attempt %d/%d) — "
+                        "retrying in %.0fms: %s",
+                        call_num, attempt_ms, _attempt + 1, _MAX_CONN_RETRIES + 1,
+                        _CONN_RETRY_DELAY_S * 1000, exc,
+                    )
+                    await asyncio.sleep(_CONN_RETRY_DELAY_S)
+                else:
+                    elapsed_ms = (time.monotonic() - t0) * 1000
+                    log.error("LLM call #%d failed after %.0fms: %s", call_num, elapsed_ms, exc)
+                    raise
+            except Exception as exc:
+                elapsed_ms = (time.monotonic() - t0) * 1000
+                log.error("LLM call #%d failed after %.0fms: %s", call_num, elapsed_ms, exc)
+                raise
 
         elapsed_ms = (time.monotonic() - t0) * 1000
         usage = response.usage
         if usage:
+            details = getattr(usage, "prompt_tokens_details", None)
+            cached = getattr(details, "cached_tokens", 0) or 0
             log.info(
-                "LLM call #%d — %.0fms | prompt=%d completion=%d total=%d tokens",
+                "LLM call #%d — %.0fms | prompt=%d (cached=%d) completion=%d total=%d tokens",
                 call_num, elapsed_ms,
-                usage.prompt_tokens, usage.completion_tokens, usage.total_tokens,
+                usage.prompt_tokens, cached, usage.completion_tokens, usage.total_tokens,
             )
         else:
             log.info("LLM call #%d — %.0fms (no usage info)", call_num, elapsed_ms)
