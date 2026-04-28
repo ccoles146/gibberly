@@ -113,7 +113,7 @@
 
   // ── Live scroll tracking ───────────────────────────────────────────────────
   function isNearBottom() {
-    return readingPaneEl.scrollHeight - readingPaneEl.scrollTop - readingPaneEl.clientHeight < 80;
+    return readingPaneEl.scrollHeight - readingPaneEl.scrollTop - readingPaneEl.clientHeight < 150;
   }
 
   function scrollToBottom(smooth) {
