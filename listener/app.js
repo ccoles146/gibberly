@@ -274,11 +274,37 @@
   langSelect.addEventListener('change', () => { chosenLang = langSelect.value; });
 
   // ── Connection state ───────────────────────────────────────────────────────
-  let audioCtx     = null;
-  let nextPlayTime = 0;
-  let ws           = null;
-  let connected    = false;
-  let audioActive  = false;
+  let audioCtx        = null;
+  let mediaStreamDest = null;
+  let audioBypassEl   = null;
+  let nextPlayTime    = 0;
+  let ws              = null;
+  let connected       = false;
+  let audioActive     = false;
+
+  // ── Wake lock ──────────────────────────────────────────────────────────────
+  let wakeLock = null;
+
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } catch (e) {
+      console.warn('[gibberly] wake lock failed:', e.message);
+    }
+  }
+
+  function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release(); wakeLock = null; }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && connected) requestWakeLock();
+    if (document.visibilityState === 'visible' && audioActive && audioCtx) {
+      audioCtx.resume().catch(() => {});
+    }
+  });
 
   function setStatus(msg) { statusEl.textContent = msg; }
 
@@ -290,7 +316,10 @@
     langSelect.disabled    = state;
     speedRow.style.display = state ? 'flex' : 'none';
     muteBtn.disabled       = !state;
-    if (!state) {
+    if (state) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
       if (audioActive) {
         audioActive         = false;
         muteBtn.textContent = '🔊 Enable audio';
@@ -314,7 +343,7 @@
     }
     const src     = audioCtx.createBufferSource();
     src.buffer    = audioBuffer;
-    src.connect(audioCtx.destination);
+    src.connect(mediaStreamDest || audioCtx.destination);
     const now     = audioCtx.currentTime;
     const startAt = Math.max(now, nextPlayTime);
     src.start(startAt);
@@ -334,28 +363,56 @@
     if (!audioActive) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+      // If the OS suspends the AudioContext (screen off, backgrounded), resume it
+      // automatically. The <audio> element keeps the audio session alive so audio
+      // continues as soon as the context is running again.
+      audioCtx.addEventListener('statechange', () => {
+        if (audioCtx && audioCtx.state === 'suspended' && audioActive) {
+          audioCtx.resume().catch(() => {});
+        }
+      });
+
+      // Route audio through a MediaStream → <audio> element so iOS treats it as
+      // media playback, which bypasses the hardware silent/mute switch.
+      mediaStreamDest = audioCtx.createMediaStreamDestination();
+      if (!audioBypassEl) {
+        audioBypassEl = document.createElement('audio');
+        audioBypassEl.setAttribute('playsinline', '');
+        document.body.appendChild(audioBypassEl);
+      }
+      audioBypassEl.srcObject = mediaStreamDest.stream;
+      audioBypassEl.play().catch(() => {});
+
       nextPlayTime = 0;
       fetch(`/session/${session}/audio/join?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
       audioActive         = true;
       muteBtn.textContent = '🔇 Mute audio';
       muteBtn.className   = 'active';
-      if (isIOS && muteWarningEl) muteWarningEl.style.display = 'block';
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: 'Gibberly', artist: 'Live Translation',
+        });
+        navigator.mediaSession.playbackState = 'playing';
+      }
     } else {
       if (audioCtx) audioCtx.suspend();
+      if (audioBypassEl) { audioBypassEl.pause(); audioBypassEl.srcObject = null; }
       fetch(`/session/${session}/audio/leave?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
       audioActive         = false;
       muteBtn.textContent = '🔊 Enable audio';
       muteBtn.className   = '';
-      if (muteWarningEl) muteWarningEl.style.display = 'none';
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     }
   });
 
   // ── Connect / disconnect ───────────────────────────────────────────────────
   function disconnect(reason) {
-    if (muteWarningEl) muteWarningEl.style.display = 'none';
     if (audioActive && audioCtx) {
       audioCtx.close();
       audioCtx = null;
+      mediaStreamDest = null;
+      if (audioBypassEl) { audioBypassEl.pause(); audioBypassEl.srcObject = null; }
       fetch(`/session/${session}/audio/leave?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
       audioActive = false;
     }
@@ -452,7 +509,6 @@
       fetch(`/session/${session}/leave?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
       const wasConnected = connected;
       connected = false;
-      if (muteWarningEl) muteWarningEl.style.display = 'none';
       if (wasConnected) {
         setStatus('Disconnected.');
       } else {
