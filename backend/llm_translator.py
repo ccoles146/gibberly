@@ -5,8 +5,7 @@ import time
 from collections import deque
 
 import openai
-from openai import AsyncAzureOpenAI
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 log = logging.getLogger("gibberly.llm")
 
@@ -85,15 +84,10 @@ class LLMTranslator:
         target_languages: list[dict],
         context_window: int = 5,
     ):
-        # self._client = AsyncAzureOpenAI(
-        #     azure_endpoint=endpoint,
-        #     api_key=api_key,
-        #     api_version="2025-04-01-preview",
-        #     max_retries=0,
-        # )
-        self._client = OpenAI(
-            base_url=endpoint,
+        self._client = AsyncOpenAI(
+            base_url=endpoint.rstrip("/") + "/openai/v1",
             api_key=api_key,
+            max_retries=0,
         )
         self._deployment = deployment
         self._target_languages = target_languages
@@ -147,7 +141,7 @@ class LLMTranslator:
         response = None
         for _attempt in range(_MAX_CONN_RETRIES + 1):
             try:
-                response = self._client.chat.completions.create(
+                response = await self._client.chat.completions.create(
                     model=self._deployment,
                     messages=[
                         {"role": "system", "content": self._system_prompt},
