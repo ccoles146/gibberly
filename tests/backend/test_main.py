@@ -290,7 +290,7 @@ def test_languages_endpoint_returns_list(mock_session_class):
                 assert r.status_code == 200
                 langs = r.json()
                 assert isinstance(langs, list)
-                assert len(langs) == 9
+                assert len(langs) == 5
                 assert all("code" in l and "name" in l for l in langs)
                 assert all("voice" not in l for l in langs)
 

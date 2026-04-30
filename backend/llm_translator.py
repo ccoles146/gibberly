@@ -6,6 +6,7 @@ from collections import deque
 
 import openai
 from openai import AsyncAzureOpenAI
+from openai import OpenAI
 
 log = logging.getLogger("gibberly.llm")
 
@@ -27,17 +28,20 @@ def _build_system_prompt(target_languages: list[dict]) -> str:
         for lang in target_languages
     )
     return f"""\
-You process live sermon transcript for real-time interpretation.
+You process live evangelical sermon transcript, informal, extemporaneous speech for real-time interpretation.
 
 ## Your task
 You receive a NEW CHUNK of transcript (possibly mid-sentence or a sentence fragment).
 Interpret it into natural, complete phrases in each target language.
 Even if the chunk is a sentence fragment, produce complete natural phrases by inferring
-the speaker's meaning from context. Do not translate literally — interpret.
+the speaker's meaning from context. Do not translate literally — interpret based on your knowledge
+of the Bible and Christian theology including vocabulary for the particular target language. 
+If it seems incorrect given the context then you probably misheard.
 
 The text has been machine-transcribed and may contain transcription errors.
 Try to correct them if the meaning seems out of context (e.g. "impossible" transcribed
-as "possible" — catch those). If correction is uncertain, translate as given.
+as "possible" — catch those). If correction is uncertain, lean towards a more theologically meaningful
+interpretation given the recent context.
 
 The context lines are shown so you can maintain consistent vocabulary and understand
 sentence flow — they have already been broadcast. DO NOT include context in your output.
@@ -45,7 +49,7 @@ Target vocabulary for young adults and non-native speakers. Be concise but natur
 
 ## Cleaning rules
 Remove spoken fillers (ähm, äh, hm, also/ja/ne/sozusagen/irgendwie/halt when used as
-fillers), false starts, and immediately repeated words. If the entire input is filler,
+fillers), false starts, immediately repeated words and short phrases. If the entire input is filler,
 return empty strings for all fields.
 
 ## Output format
@@ -81,11 +85,15 @@ class LLMTranslator:
         target_languages: list[dict],
         context_window: int = 5,
     ):
-        self._client = AsyncAzureOpenAI(
-            azure_endpoint=endpoint,
+        # self._client = AsyncAzureOpenAI(
+        #     azure_endpoint=endpoint,
+        #     api_key=api_key,
+        #     api_version="2025-04-01-preview",
+        #     max_retries=0,
+        # )
+        self._client = OpenAI(
+            base_url=endpoint,
             api_key=api_key,
-            api_version="2024-08-01-preview",
-            max_retries=0,
         )
         self._deployment = deployment
         self._target_languages = target_languages
@@ -139,16 +147,16 @@ class LLMTranslator:
         response = None
         for _attempt in range(_MAX_CONN_RETRIES + 1):
             try:
-                response = await self._client.chat.completions.create(
+                response = self._client.chat.completions.create(
                     model=self._deployment,
                     messages=[
                         {"role": "system", "content": self._system_prompt},
                         {"role": "user", "content": self._build_user_message(raw)},
                     ],
-                    temperature=0,
-                    max_tokens=max(512, len(raw.split()) * 12 * len(self._target_languages)),
+                    temperature=1,
+                    max_completion_tokens=max(512, len(raw.split()) * 12 * len(self._target_languages)),
                     response_format={"type": "json_object"},
-                    timeout=5.0,
+                    timeout=10.0,
                 )
                 break  # success
             except openai.BadRequestError as exc:

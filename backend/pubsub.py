@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 from backend.languages import SUPPORTED_LANGUAGES
+from azure.core.pipeline.transport import RequestsTransport
 from azure.messaging.webpubsubservice import WebPubSubServiceClient
 
 log = logging.getLogger("gibberly.pubsub")
@@ -32,8 +33,12 @@ class PubSubPublisher:
     def __init__(self, connection_string: str, hub: str = "sermon"):
         # Normalize connection string: Azure Portal returns "AccessKey" but SDK expects "accesskey"
         normalized_cs = connection_string.replace("AccessKey=", "accesskey=")
+        # HTTP-level timeout prevents zombie threads when the PubSub REST endpoint
+        # is unresponsive. Without this, requests hangs indefinitely, fills the
+        # executor thread pool, and causes all subsequent publishes to queue and timeout.
+        transport = RequestsTransport(connection_timeout=3, read_timeout=4)
         self._client = WebPubSubServiceClient.from_connection_string(
-            normalized_cs, hub=hub
+            normalized_cs, hub=hub, transport=transport
         )
         log.info("PubSub client initialised (hub=%s)", hub)
 

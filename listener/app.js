@@ -399,6 +399,7 @@
     ws.onmessage = (event) => {
       let msg;
       try { msg = JSON.parse(event.data); } catch { return; }
+      console.log('[gibberly] ws msg:', msg.type, msg.event || '', msg.dataType || '', typeof msg.data === 'string' ? msg.data.slice(0, 80) : '');
 
       if (msg.type === 'message' && msg.dataType === 'binary') {
         const buf = base64ToArrayBuffer(msg.data);
@@ -410,7 +411,26 @@
         let d = msg.data;
         if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = null; } }
         if (d?.type === 'close') {
-          disconnect('Session ended.');
+          console.log('[gibberly] received close message from backend — will try to reconnect');
+          disconnect('Stream ended — reconnecting…');
+          setTimeout(async () => {
+            try {
+              const res = await fetch('/current-session');
+              if (res.ok) {
+                const { session_id } = await res.json();
+                session = session_id;
+                const url = new URL(window.location.href);
+                url.searchParams.set('session', session_id);
+                window.history.replaceState(null, '', url.toString());
+                await loadLanguages();
+                connect();
+              } else {
+                setStatus('Stream ended.');
+              }
+            } catch {
+              setStatus('Stream ended.');
+            }
+          }, 1500);
         } else if (d?.type === 'phrase') {
           const text = d.text || '';
           if (text) onPhrase(text);
@@ -422,9 +442,13 @@
       }
     };
 
-    ws.onerror = () => setStatus('Connection error.');
+    ws.onerror = (e) => {
+      console.warn('[gibberly] ws error', e);
+      setStatus('Connection error.');
+    };
 
     ws.onclose = (evt) => {
+      console.log(`[gibberly] ws closed — code:${evt.code} reason:"${evt.reason}" wasClean:${evt.wasClean}`);
       fetch(`/session/${session}/leave?lang=${chosenLang}`, { method: 'POST' }).catch(() => {});
       const wasConnected = connected;
       connected = false;

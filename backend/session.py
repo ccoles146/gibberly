@@ -121,7 +121,10 @@ class SessionHandler:
                     break
                 await self._process_chunk(raw_src)
         except asyncio.CancelledError:
-            pass
+            log.info("Session %s — drain task cancelled", self.session_id)
+        except Exception as exc:
+            log.error("Session %s — drain task crashed: %s", self.session_id, exc, exc_info=True)
+            raise
 
     async def _process_chunk(self, raw_src: str) -> None:
         if self._stopped or self.paused:
@@ -181,12 +184,24 @@ class SessionHandler:
                     )
                     continue
 
+                log.debug(
+                    "Session %s — chunk #%d publishing phrase lang=%s",
+                    self.session_id, chunk_num, lang["code"],
+                )
                 try:
-                    await loop.run_in_executor(
-                        None,
-                        lambda lc=lang["code"], cs=clean_src, t=text: (
-                            self._publisher.publish_phrase(self.session_id, lc, cs, t)
+                    await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None,
+                            lambda lc=lang["code"], cs=clean_src, t=text: (
+                                self._publisher.publish_phrase(self.session_id, lc, cs, t)
+                            ),
                         ),
+                        timeout=5.0,
+                    )
+                except asyncio.TimeoutError:
+                    log.error(
+                        "Session %s — chunk #%d phrase publish TIMED OUT lang=%s after 5s — skipping",
+                        self.session_id, chunk_num, lang["code"],
                     )
                 except Exception as exc:
                     log.error(
@@ -201,9 +216,17 @@ class SessionHandler:
                         def on_chunk(audio_bytes: bytes, lc=lang["code"]) -> None:
                             self._publisher.publish_audio(self.session_id, lc, audio_bytes)
 
-                        await loop.run_in_executor(
-                            None,
-                            lambda t=text, s=tts, oc=on_chunk, tn=tone: s.synthesize(t, oc, tone=tn),
+                        await asyncio.wait_for(
+                            loop.run_in_executor(
+                                None,
+                                lambda t=text, s=tts, oc=on_chunk, tn=tone: s.synthesize(t, oc, tone=tn),
+                            ),
+                            timeout=15.0,
+                        )
+                    except asyncio.TimeoutError:
+                        log.error(
+                            "Session %s — chunk #%d TTS TIMED OUT lang=%s tone=%s after 15s — skipping",
+                            self.session_id, chunk_num, lang["code"], tone,
                         )
                     except Exception as exc:
                         log.error(
@@ -224,6 +247,8 @@ class SessionHandler:
         if self._on_status:
             try:
                 await self._on_status(msg)
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 pass
 
@@ -305,9 +330,9 @@ class SessionHandler:
             self.session_id, elapsed_s, self._chunk_count,
             dict(self.listener_count),
         )
+        self._stt.stop()
         if self._drain_task is not None:
             self._loop.call_soon_threadsafe(self._drain_task.cancel)
-        self._stt.stop()
         try:
             self._publisher.send_close(self.session_id)
         except Exception as exc:

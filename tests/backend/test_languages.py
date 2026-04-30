@@ -10,7 +10,7 @@ def test_all_languages_have_required_keys():
 
 def test_language_count():
     from backend.languages import SUPPORTED_LANGUAGES
-    assert len(SUPPORTED_LANGUAGES) == 9
+    assert len(SUPPORTED_LANGUAGES) == 5
 
 
 def test_get_target_languages_excludes_source():
