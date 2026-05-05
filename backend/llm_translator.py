@@ -5,7 +5,7 @@ import time
 from collections import deque
 
 import openai
-from openai import AsyncOpenAI
+from openai import AsyncAzureOpenAI
 
 log = logging.getLogger("gibberly.llm")
 
@@ -84,9 +84,10 @@ class LLMTranslator:
         target_languages: list[dict],
         context_window: int = 5,
     ):
-        self._client = AsyncOpenAI(
-            base_url=endpoint.rstrip("/") + "/openai/v1",
+        self._client = AsyncAzureOpenAI(
+            azure_endpoint=endpoint,
             api_key=api_key,
+            api_version="2024-02-01",
             max_retries=0,
         )
         self._deployment = deployment

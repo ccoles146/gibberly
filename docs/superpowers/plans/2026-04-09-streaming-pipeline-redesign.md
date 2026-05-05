@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-04-09-streaming-pipeline-redesign-design.md`
 
+**Status:** COMPLETE
+
 ---
 
 ## File Map
