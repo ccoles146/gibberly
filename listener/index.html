@@ -525,6 +525,143 @@
       #reading-pane-wrapper { padding: 0 18% 28px; }
       #speed-row { padding: 10px 18% 8px; }
     }
+
+    /* ── CONNECT MODAL ───────────────────────────────────────────────────── */
+    #connect-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(9, 12, 20, 0.88);
+      backdrop-filter: blur(12px) saturate(1.4);
+      -webkit-backdrop-filter: blur(12px) saturate(1.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 900;
+      padding: 24px;
+    }
+    #connect-modal.hidden { display: none; }
+
+    .modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-mid);
+      border-radius: var(--r);
+      padding: 32px 28px 28px;
+      max-width: 360px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03);
+    }
+
+    .modal-brand { display: flex; align-items: center; gap: 9px; }
+
+    .modal-subtitle {
+      font-family: var(--serif);
+      font-size: 16px;
+      font-weight: 300;
+      font-style: italic;
+      color: var(--text-soft);
+      margin-top: 5px;
+      margin-bottom: 22px;
+    }
+
+    .modal-divider {
+      width: 100%;
+      height: 1px;
+      background: var(--border);
+      margin-bottom: 20px;
+    }
+
+    .modal-loading-text {
+      font-size: 13px;
+      color: var(--text-dim);
+      text-align: center;
+    }
+
+    #modal-body-session, #modal-body-nosession {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 7px;
+    }
+
+    #modal-lang-select {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      color: var(--text);
+      font-family: var(--ui);
+      font-size: 15px;
+      padding: 10px 14px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      outline: none;
+      margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+    #modal-lang-select:focus { border-color: var(--amber); }
+
+    #modal-connect-btn {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--amber-glow);
+      border: 1px solid rgba(232, 154, 14, 0.45);
+      color: var(--amber);
+      font-family: var(--ui);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #modal-connect-btn:hover { background: rgba(232,154,14,0.18); border-color: var(--amber); }
+    #modal-connect-btn:disabled { opacity: 0.4; cursor: default; }
+
+    .modal-desc {
+      font-size: 13px;
+      color: var(--text-soft);
+      text-align: center;
+      line-height: 1.6;
+      margin-bottom: 8px;
+    }
+
+    .modal-hint {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-align: center;
+      line-height: 1.65;
+      margin-bottom: 20px;
+    }
+    .modal-hint strong { color: var(--text-soft); }
+
+    #modal-find-btn {
+      width: 100%;
+      padding: 12px 16px;
+      background: transparent;
+      border: 1px solid var(--border-mid);
+      color: var(--text-soft);
+      font-family: var(--ui);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #modal-find-btn:hover { border-color: var(--amber); color: var(--amber); }
+    #modal-find-btn:disabled { opacity: 0.4; cursor: default; }
   </style>
 </head>
 <body data-text-size="m">
@@ -543,7 +680,7 @@
   </header>
 
   <!-- STATUS -->
-  <p id="status">Connecting…</p>
+  <p id="status"></p>
 
   <!-- MAIN -->
   <main class="translation-stage">
@@ -597,6 +734,34 @@
       </svg>
     </button>
   </nav>
+
+  <!-- CONNECT MODAL -->
+  <div id="connect-modal">
+    <div class="modal-card">
+      <div class="modal-brand">
+        <div class="brand-icon">🎙</div>
+        <span class="brand-name">Gibberly</span>
+      </div>
+      <p class="modal-subtitle">Live Translation</p>
+      <div class="modal-divider"></div>
+
+      <div id="modal-body-loading">
+        <p class="modal-loading-text">Loading…</p>
+      </div>
+
+      <div id="modal-body-session" style="display:none">
+        <p class="modal-label">Language</p>
+        <select id="modal-lang-select"><option>Loading…</option></select>
+        <button id="modal-connect-btn">Connect</button>
+      </div>
+
+      <div id="modal-body-nosession" style="display:none">
+        <p class="modal-desc">No active session at the moment.</p>
+        <p class="modal-hint">When the service starts, tap <strong>↻ Find session</strong> below.<br>Or press the <strong>↻</strong> button in the top right.</p>
+        <button id="modal-find-btn">↻ Find session</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

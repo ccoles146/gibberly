@@ -12,7 +12,7 @@ log = logging.getLogger("gibberly.ws")
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketState
 
@@ -98,13 +98,7 @@ def negotiate(session: str, lang: str = "en"):
 def live_redirect():
     sid = app.state.current_session_id
     if not sid:
-        return HTMLResponse(
-            "<html><body style='font-family:sans-serif;text-align:center;padding:3rem'>"
-            "<h2>No live session at the moment.</h2>"
-            "<p>The service will be available when the operator starts a session.</p>"
-            "</body></html>",
-            status_code=503,
-        )
+        return RedirectResponse("/listen/index.html", status_code=302)
     return RedirectResponse(f"/listen/index.html?session={sid}", status_code=302)
 
 

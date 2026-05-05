@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gibberly — Page Not Found</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:         #090c14;
+      --bg-card:    #161f31;
+      --border-mid: #243452;
+      --text:       #ede8df;
+      --text-soft:  #8898b0;
+      --text-dim:   #38495e;
+      --amber:      #e89a0e;
+      --amber-glow: rgba(232, 154, 14, 0.10);
+      --r:          14px;
+      --r-sm:       9px;
+      --serif:      'Cormorant Garamond', Georgia, serif;
+      --ui:         'Manrope', system-ui, sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--ui);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 35% at 50% 0%,   rgba(232,154,14,0.055) 0%, transparent 100%),
+        radial-gradient(ellipse 60% 25% at 50% 108%,  rgba(0,200,150,0.04)  0%, transparent 100%);
+      pointer-events: none;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-mid);
+      border-radius: var(--r);
+      padding: 40px 36px 36px;
+      max-width: 360px;
+      width: 100%;
+      text-align: center;
+      position: relative;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      margin-bottom: 28px;
+    }
+
+    .brand-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: var(--amber-glow);
+      border: 1px solid rgba(232, 154, 14, 0.28);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .brand-name {
+      font-family: var(--serif);
+      font-size: 21px;
+      font-weight: 400;
+      letter-spacing: 0.03em;
+      color: var(--amber);
+    }
+
+    .code {
+      font-family: var(--serif);
+      font-size: 80px;
+      font-weight: 300;
+      color: var(--text-dim);
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+
+    .title {
+      font-family: var(--serif);
+      font-size: 22px;
+      font-weight: 300;
+      font-style: italic;
+      color: var(--text-soft);
+      margin-bottom: 28px;
+    }
+
+    .back-link {
+      display: inline-block;
+      padding: 10px 24px;
+      background: var(--amber-glow);
+      border: 1px solid rgba(232, 154, 14, 0.35);
+      color: var(--amber);
+      font-family: var(--ui);
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: var(--r-sm);
+      text-decoration: none;
+      transition: all 0.2s;
+      letter-spacing: 0.02em;
+    }
+    .back-link:hover {
+      background: rgba(232,154,14,0.18);
+      border-color: var(--amber);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="brand-icon">🎙</div>
+      <span class="brand-name">Gibberly</span>
+    </div>
+    <p class="code">404</p>
+    <p class="title">Page not found</p>
+    <a href="/listen/index.html" class="back-link">Go to listener</a>
+  </div>
+</body>
+</html>

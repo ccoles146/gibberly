@@ -1,21 +1,29 @@
 (function () {
-  const connectBtn      = document.getElementById('connect-btn');
-  const reconnectBtn    = document.getElementById('reconnect-btn');
-  const muteBtn         = document.getElementById('mute-btn');
-  const sizeSBtn        = document.getElementById('size-s');
-  const sizeMBtn        = document.getElementById('size-m');
-  const sizeLBtn        = document.getElementById('size-l');
-  const statusEl        = document.getElementById('status');
-  const readingPaneEl   = document.getElementById('reading-pane');
-  const readingInnerEl  = document.getElementById('reading-pane-inner');
-  const pausedPill      = document.getElementById('paused-pill');
-  const livePill        = document.getElementById('live-pill');
-  const speedRow        = document.getElementById('speed-row');
-  const speedSlider     = document.getElementById('speed-slider');
-  const speedLabel      = document.getElementById('speed-label');
-  const muteWarningEl   = document.getElementById('mute-warning');
-  const langSelect      = document.getElementById('lang-select');
-  const dlTranscriptBtn = document.getElementById('dl-transcript');
+  const connectBtn         = document.getElementById('connect-btn');
+  const reconnectBtn       = document.getElementById('reconnect-btn');
+  const muteBtn            = document.getElementById('mute-btn');
+  const sizeSBtn           = document.getElementById('size-s');
+  const sizeMBtn           = document.getElementById('size-m');
+  const sizeLBtn           = document.getElementById('size-l');
+  const statusEl           = document.getElementById('status');
+  const readingPaneEl      = document.getElementById('reading-pane');
+  const readingInnerEl     = document.getElementById('reading-pane-inner');
+  const pausedPill         = document.getElementById('paused-pill');
+  const livePill           = document.getElementById('live-pill');
+  const speedRow           = document.getElementById('speed-row');
+  const speedSlider        = document.getElementById('speed-slider');
+  const speedLabel         = document.getElementById('speed-label');
+  const muteWarningEl      = document.getElementById('mute-warning');
+  const langSelect         = document.getElementById('lang-select');
+  const dlTranscriptBtn    = document.getElementById('dl-transcript');
+
+  const connectModal       = document.getElementById('connect-modal');
+  const modalLangSelect    = document.getElementById('modal-lang-select');
+  const modalConnectBtn    = document.getElementById('modal-connect-btn');
+  const modalBodyLoading   = document.getElementById('modal-body-loading');
+  const modalBodySession   = document.getElementById('modal-body-session');
+  const modalBodyNoSession = document.getElementById('modal-body-nosession');
+  const modalFindBtn       = document.getElementById('modal-find-btn');
 
   // ── Debug panel ────────────────────────────────────────────────────────────
   const debugPanelEl  = document.getElementById('debug-panel');
@@ -266,12 +274,58 @@
       const enOpt = filtered.find(l => l.code === 'en');
       chosenLang = enOpt ? 'en' : (filtered[0]?.code || 'en');
       langSelect.value = chosenLang;
+      modalLangSelect.innerHTML = langSelect.innerHTML;
+      modalLangSelect.value = chosenLang;
     } catch {
       langSelect.innerHTML = '<option value="en">English</option>';
+      modalLangSelect.innerHTML = '<option value="en">English</option>';
     }
   }
 
   langSelect.addEventListener('change', () => { chosenLang = langSelect.value; });
+
+  // ── Connect modal ──────────────────────────────────────────────────────────
+  function openModal(hasSession) {
+    modalBodyLoading.style.display   = 'none';
+    modalBodySession.style.display   = hasSession ? 'flex' : 'none';
+    modalBodyNoSession.style.display = hasSession ? 'none' : 'flex';
+    connectModal.classList.remove('hidden');
+  }
+
+  function closeModal() {
+    connectModal.classList.add('hidden');
+  }
+
+  modalLangSelect.addEventListener('change', () => {
+    chosenLang = modalLangSelect.value;
+    langSelect.value = chosenLang;
+  });
+
+  modalConnectBtn.addEventListener('click', () => {
+    chosenLang = modalLangSelect.value;
+    langSelect.value = chosenLang;
+    closeModal();
+    connect();
+  });
+
+  modalFindBtn.addEventListener('click', async () => {
+    modalFindBtn.disabled = true;
+    modalFindBtn.textContent = 'Searching…';
+    try {
+      const res = await fetch('/current-session');
+      if (!res.ok) throw new Error('No session');
+      const { session_id } = await res.json();
+      session = session_id;
+      const url = new URL(window.location.href);
+      url.searchParams.set('session', session_id);
+      window.history.replaceState(null, '', url.toString());
+      await loadLanguages();
+      openModal(true);
+    } catch {
+      modalFindBtn.textContent = '↻ Try again';
+      modalFindBtn.disabled = false;
+    }
+  });
 
   // ── Connection state ───────────────────────────────────────────────────────
   let audioCtx        = null;
@@ -546,10 +600,9 @@
     }
   });
 
-  // ── Auto-connect on load ───────────────────────────────────────────────────
+  // ── Initial load ───────────────────────────────────────────────────────────
   (async () => {
     if (!session) {
-      setStatus('Looking for active stream…');
       try {
         const res = await fetch('/current-session');
         if (res.ok) {
@@ -563,11 +616,6 @@
     }
 
     await loadLanguages();
-
-    if (session) {
-      connect();
-    } else {
-      setStatus('No active stream — use the operator link or tap ↻ to reconnect.');
-    }
+    openModal(!!session);
   })();
 })();

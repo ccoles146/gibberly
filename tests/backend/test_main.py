@@ -100,7 +100,8 @@ def test_live_redirect_no_session(mock_session_class):
         async def _test():
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 r = await client.get("/listen/live", follow_redirects=False)
-                assert r.status_code == 503
+                assert r.status_code == 302
+                assert r.headers["location"] == "/listen/index.html"
 
         asyncio.run(_test())
 
