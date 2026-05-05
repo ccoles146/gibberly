@@ -456,6 +456,7 @@
       } else {
         setStatus('Already on latest session.');
       }
+      connectBtn.disabled = false;
     } catch (e) {
       setStatus('Refresh failed: ' + e.message);
     } finally {

@@ -216,7 +216,19 @@ class LLMTranslator:
                 call_num, elapsed_ms,
             )
 
-        content = response.choices[0].message.content
+        choice = response.choices[0]
+        if choice.finish_reason == "content_filter":
+            ctx_before = len(self._context)
+            self._context.clear()
+            self._pending = ""
+            log.warning(
+                "LLM call #%d — output content filtered after %.0fms. "
+                "Cleared context (%d entries).",
+                call_num, elapsed_ms, ctx_before,
+            )
+            raise ContentFilterError("output_content_filter")
+
+        content = choice.message.content
         if not content:
             raise ValueError("LLM returned empty content (possible content filter or token limit)")
         parsed = json.loads(content.strip())

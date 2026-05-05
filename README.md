@@ -1,5 +1,7 @@
 # Gibberly — Live Sermon Translation
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+
 Real-time sermon translation via Azure Speech + Web PubSub.
 Built to solve our own translation problems:
 
@@ -283,3 +285,75 @@ Scan the QR code shown in the console, or open the URL directly in a browser.
 ```bash
 pytest tests/ -v
 ```
+
+---
+
+## Environment variables reference
+
+Copy `.env.example` to `.env` and fill in the values below. Variables marked **required** must be set; everything else has a working default.
+
+### Core Azure credentials (required)
+
+| Variable | Description |
+|---|---|
+| `AZURE_SPEECH_KEY` | Key 1 from your Azure Speech resource |
+| `AZURE_SPEECH_REGION` | Azure region of the Speech resource (e.g. `germanywestcentral`) |
+| `AZURE_WEBPUBSUB_CONNECTION_STRING` | Primary connection string from your Web PubSub resource |
+| `AZURE_OPENAI_ENDPOINT` | Endpoint URL of your Azure OpenAI resource |
+| `AZURE_OPENAI_API_KEY` | Key 1 from your Azure OpenAI resource |
+| `AZURE_OPENAI_DEPLOYMENT` | Deployment name for your GPT-4o mini model (e.g. `gpt-4o-mini`) |
+
+### Backend server
+
+| Variable | Default | Description |
+|---|---|---|
+| `BACKEND_HOST` | `0.0.0.0` | Interface the FastAPI server binds to. Set to your LAN IP for local-network use so phones can reach the QR-code URL. |
+| `BACKEND_PORT` | `8000` | Port the backend listens on |
+
+### Speech-to-text tuning
+
+| Variable | Default | Description |
+|---|---|---|
+| `STT_SILENCE_TIMEOUT_MS` | `1000` | Milliseconds of silence before a phrase is dispatched |
+| `STT_TIME_CAP_S` | `8.0` | Maximum phrase length in seconds before a forced dispatch (2–10 s recommended) |
+
+### LLM / translation
+
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_CONTEXT_WINDOW` | `5` | Number of recent phrases passed as context to the translation model |
+| `SESSION_TIMEOUT_S` | `3600` | Seconds of inactivity before a translation session is closed automatically |
+
+### Advanced TTS — Azure OpenAI (`gpt-4o-mini-tts`)
+
+By default, Gibberly falls back to standard Azure Speech TTS. To enable the higher-quality `gpt-4o-mini-tts` voice you need an Azure OpenAI deployment in **East US** (the only region that supports audio output at time of writing).
+
+| Variable | Default | Description |
+|---|---|---|
+| `AZURE_OPENAI_REGION` | _(empty)_ | Region of your primary OpenAI resource. Set to `eastus` or `eastus2` to route TTS through the primary endpoint automatically. |
+| `AZURE_OPENAI_EASTUS_ENDPOINT` | _(empty)_ | Endpoint of a *secondary* East US Azure OpenAI resource. Only needed when your primary resource is in another region. |
+| `AZURE_OPENAI_EASTUS_API_KEY` | _(empty)_ | Key for the secondary East US resource |
+| `OPENAI_TTS_MODEL` | `gpt-4o-mini-tts` | Deployment name of the TTS model (advanced TTS only) |
+| `OPENAI_TTS_VOICE` | `coral` | Voice name for `gpt-4o-mini-tts` |
+
+TTS mode selection logic:
+- `AZURE_OPENAI_REGION` = `eastus`/`eastus2` → uses primary endpoint for TTS
+- `AZURE_OPENAI_EASTUS_ENDPOINT` + `AZURE_OPENAI_EASTUS_API_KEY` set → uses secondary endpoint
+- Neither → falls back to Azure Speech TTS (always available, no extra config)
+
+### Operator console
+
+| Variable | Default | Description |
+|---|---|---|
+| `GIBBERLY_BACKEND` | `ws://localhost:8000` | WebSocket URL the operator page connects to. Use `wss://` for an Azure-hosted backend. |
+| `OPERATOR_PORT` | `9000` | Port the operator dev server listens on |
+
+---
+
+## License
+
+Gibberly is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+
+**Self-hosting is free.** You may run Gibberly for your own congregation at no charge, modify it, and redistribute it — provided you keep the same license and make your source available to users of any network service you operate.
+
+**Hosted / done-for-you setup** is available commercially. Contact us if you'd like Gibberly deployed and managed for you.
