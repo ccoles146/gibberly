@@ -256,6 +256,26 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE", tts_voice: st
                         )
                     audio_state["warned"] = False
 
+    async def _idle_timeout_watchdog() -> None:
+        """Closes session only when no audio has arrived for session_timeout_s seconds.
+
+        Resets on every audio packet so active sessions are never cancelled mid-sermon.
+        Fires for paused or abandoned sessions once the idle window expires.
+        """
+        while True:
+            await asyncio.sleep(60)
+            idle_s = time.monotonic() - audio_state["last_bytes_at"]
+            if idle_s >= settings.session_timeout_s:
+                log.warning(
+                    "Session %s idle for %.0fs (threshold=%ds) — closing operator WebSocket",
+                    handler.session_id, idle_s, settings.session_timeout_s,
+                )
+                try:
+                    await websocket.close(code=1001)
+                except Exception:
+                    pass
+                return
+
     async def _receive_loop() -> None:
         while True:
             data = await websocket.receive()
@@ -293,18 +313,10 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE", tts_voice: st
 
     keepalive_task = asyncio.create_task(_keepalive())
     silence_task = asyncio.create_task(_silence_watchdog())
+    idle_timeout_task = asyncio.create_task(_idle_timeout_watchdog())
 
     try:
-        await asyncio.wait_for(_receive_loop(), timeout=settings.session_timeout_s)
-    except asyncio.TimeoutError:
-        log.warning(
-            "Session %s timed out after %ds — closing operator WebSocket",
-            handler.session_id, settings.session_timeout_s,
-        )
-        try:
-            await websocket.close(code=1001)
-        except Exception:
-            pass
+        await _receive_loop()
     except WebSocketDisconnect as exc:
         log.info(
             "Session %s — operator disconnected (code=%s reason=%r) "
@@ -334,6 +346,7 @@ async def stream(websocket: WebSocket, source_lang: str = "de-DE", tts_voice: st
     finally:
         keepalive_task.cancel()
         silence_task.cancel()
+        idle_timeout_task.cancel()
         app.state.sessions.pop(handler.session_id, None)
         if app.state.current_session_id == handler.session_id:
             app.state.current_session_id = None
