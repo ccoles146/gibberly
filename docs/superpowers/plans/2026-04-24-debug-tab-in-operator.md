@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla HTML/CSS/JS. No build step. `operator/debug.js` derives `backendHttp` from `window.GIBBERLY_BACKEND` (same as `app.js`) because the operator page may be served from a different origin than the backend.
 
-**Status:** Implemented
+**Status:** COMPLETE
 
 ---
 

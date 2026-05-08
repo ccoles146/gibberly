@@ -1,6 +1,6 @@
 # Gibberly — Live Sermon Translation
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE) · [gibberly.app](https://gibberly.app)
 
 Real-time sermon translation via Azure Speech + Web PubSub.
 Built to solve our own translation problems:
@@ -356,4 +356,4 @@ Gibberly is released under the [GNU Affero General Public License v3.0](LICENSE)
 
 **Self-hosting is free.** You may run Gibberly for your own congregation at no charge, modify it, and redistribute it — provided you keep the same license and make your source available to users of any network service you operate.
 
-**Hosted / done-for-you setup** is available commercially. Contact us if you'd like Gibberly deployed and managed for you.
+**Hosted / done-for-you setup** is available commercially — see [gibberly.app](https://gibberly.app) if you'd like Gibberly deployed and managed for you.

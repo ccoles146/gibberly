@@ -13,6 +13,8 @@
 
 **Tech Stack:** Python 3.13 / FastAPI (`backend/session.py`, `backend/pubsub.py`, `backend/main.py`); vanilla JS (`listener/app.js`); pytest; Azure Web PubSub.
 
+**Status:** Implemented - testing
+
 ---
 
 ## File Map
